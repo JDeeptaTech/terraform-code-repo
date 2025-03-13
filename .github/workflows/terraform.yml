@@ -22,7 +22,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           repository: JDeeptaTech/tf-vars-repo
-          token: ${{ secrets.PAT_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           path: tf-vars
 
       - name: Setup Terraform
