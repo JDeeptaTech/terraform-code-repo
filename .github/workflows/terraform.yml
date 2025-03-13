@@ -1,12 +1,13 @@
 name: Terraform Apply
 
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
-  repository_dispatch:
-    types: [update-vars]
+  workflow_call:
+    inputs:
+      requestor:
+        description: 'A requestor name'
+        default: 'pradeep toluganti'
+        required: false
+        type: string
 
 jobs:
   terraform:
@@ -18,23 +19,26 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Checkout TF Vars Repo
-        uses: actions/checkout@v3
-        with:
-          repository: JDeeptaTech/tf-vars-repo
-          token: ${{ secrets.GITHUB_TOKEN }}
-          path: tf-vars
+      # - name: Checkout TF Vars Repo
+      #   uses: actions/checkout@v3
+      #   with:
+      #     repository: JDeeptaTech/tf-vars-repo
+      #     token: ${{ secrets.GITHUB_TOKEN }}
+      #     path: tf-vars
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: 1.10.5
 
-      # - name: Initialize Terraform
-      #   run: terraform init
+      - name: Generate Terraform variables file
+        run: ./scripts/generate-tfvars.sh ./src ${{ github.event.inputs.requestor }}
+
+      - name: Initialize Terraform
+        run: terraform -chdir=src init
 
       - name: Plan Terraform
-        run: make tf-plan
+        run: ./scripts/tf-plan.sh
 
       # - name: Apply Terraform (Manual Approval Required)
       #   if: github.event_name == 'workflow_dispatch'
