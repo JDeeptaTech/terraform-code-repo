@@ -9,6 +9,12 @@ on:
         required: false
         type: string
 
+      datacenter:
+        description: "datacenter name"
+        default: "dc-01"
+        required: false
+        type: string
+
       app_version:
         description: "use Version"
         default: "v1.0.1"
@@ -42,7 +48,7 @@ jobs:
         run: chmod +x ./scripts/*.sh
 
       - name: Generate Terraform variables file
-        run: ./scripts/generate-tfvars.sh ./src "${{ github.event.inputs.requestor }}"
+        run: ./scripts/generate-tfvars.sh ./src "${{ github.event.inputs.requestor }}" "${{ github.event.inputs.datacenter }}"
 
       - name: Initialize Terraform
         run: terraform -chdir=src init
