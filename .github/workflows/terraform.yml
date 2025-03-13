@@ -1,11 +1,11 @@
 name: Terraform Apply
 
 on:
-  workflow_call:
+  workflow_dispatch:
     inputs:
       requestor:
-        description: 'A requestor name'
-        default: 'pradeep toluganti'
+        description: "A requestor name"
+        default: "pradeep toluganti"
         required: false
         type: string
 
