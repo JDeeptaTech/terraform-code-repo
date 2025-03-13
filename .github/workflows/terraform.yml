@@ -31,6 +31,9 @@ jobs:
         with:
           terraform_version: 1.10.5
 
+      - name: Change script permissions
+        run: chmod +x ./scripts/*.sh
+
       - name: Generate Terraform variables file
         run: ./scripts/generate-tfvars.sh ./src ${{ github.event.inputs.requestor }}
 
