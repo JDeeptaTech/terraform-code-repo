@@ -15,11 +15,11 @@ on:
         required: false
         type: string
 
-      app_version:
-        description: "use Version"
-        default: "v1.0.1"
-        required: false
-        type: string
+      # app_version:
+      #   description: "use Version"
+      #   default: "v1.0.1"
+      #   required: false
+      #   type: string
 
 jobs:
   terraform:
