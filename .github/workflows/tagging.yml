@@ -1,0 +1,31 @@
+name: Auto Tag on PR Merge
+
+on:
+  pull_request:
+    types:
+      - closed
+
+jobs:
+  tag_release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Setup Git
+      run: |
+        git config --global user.name "github-actions"
+        git config --global user.email "github-actions@github.com"
+
+    - name: Install Make
+      run: sudo apt-get install -y make
+
+    - name: Run Makefile to Create Tag
+      run: make tag
+
+    - name: Push Tag
+      run: git push --tags
