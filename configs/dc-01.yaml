@@ -1,0 +1,5 @@
+---
+name: dc-01
+datastore: datastore-01
+cluster: cluster-01
+network: network-01
