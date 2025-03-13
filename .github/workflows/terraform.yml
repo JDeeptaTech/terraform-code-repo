@@ -21,21 +21,21 @@ jobs:
       - name: Checkout TF Vars Repo
         uses: actions/checkout@v3
         with:
-          repository: your-org/tf-vars-repo
+          repository: JDeeptaTech/tf-vars-repo
           token: ${{ secrets.PAT_TOKEN }}
           path: tf-vars
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
-          terraform_version: 1.5.0
+          terraform_version: 1.10.5
 
-      - name: Initialize Terraform
-        run: terraform init
+      # - name: Initialize Terraform
+      #   run: terraform init
 
       - name: Plan Terraform
-        run: terraform plan -var-file=tf-vars/variables.tfvars
+        run: make tf-plan
 
-      - name: Apply Terraform (Manual Approval Required)
-        if: github.event_name == 'workflow_dispatch'
-        run: terraform apply -auto-approve -var-file=tf-vars/variables.tfvars
+      # - name: Apply Terraform (Manual Approval Required)
+      #   if: github.event_name == 'workflow_dispatch'
+      #   run: terraform apply -auto-approve -var-file=tf-vars/variables.tfvars
