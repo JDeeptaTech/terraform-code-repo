@@ -14,3 +14,15 @@ tag:
 	echo "Creating new tag: $$NEXT_VERSION"; \
 	git tag $$NEXT_VERSION; \
 	git push origin $$NEXT_VERSION
+
+.PHONY: tf-validate tf-init tf-plan
+
+tf-validate: | tf-init
+	@terraform -chdir=src validate
+
+tf-init: 
+	@terraform -chdir=src init
+
+tf-plan: | tf-validate
+	@bash +x ./scripts/tf-plan.sh
+	@echo "$$?"
