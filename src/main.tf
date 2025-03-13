@@ -1,7 +1,9 @@
 output "file_data" {
   value = <<-EOT
     Deploying VM for user ${var.requestor} in
-      vSphere Datacenter: ${local.dc_informaiton.name}
-      datastore: ${local.dc_informaiton.datastore}
+      Datacenter: ${local.dc_informaiton.name}
+      Datastore: ${local.dc_informaiton.datastore}
+      Cluster: ${local.dc_informaiton.cluster}
+      Network: ${local.dc_informaiton.network}
   EOT
 }
