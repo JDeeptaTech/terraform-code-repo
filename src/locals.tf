@@ -1,3 +1,3 @@
 locals {
-  # request_data = yamldecode(file(var.request_data_file))
+  dc_informaiton = yamldecode(file("../configs/${var.vsphere_datacenter}.yaml"))
 }
