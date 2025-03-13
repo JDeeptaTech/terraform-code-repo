@@ -7,5 +7,5 @@ out_file="$destination_dir/src/terraform.tfvars"
 tfvars_file_data=$(cat <<EOF
 requestor = \"$requestor\"
 EOF
-
+)
 eval "echo \"${tfvars_file_data}\"" > "$out_file"
