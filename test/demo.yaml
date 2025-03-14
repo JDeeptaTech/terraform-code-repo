@@ -1,2 +1,4 @@
 ---
 requestor: Pradeep Toluganti
+vsphere_datacenter: dc-01
+vm_count: 1

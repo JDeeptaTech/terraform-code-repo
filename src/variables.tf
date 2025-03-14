@@ -7,6 +7,16 @@ variable "requestor" {
   }
 }
 
+variable "vm_count" {
+  description = "Number of VMs to deploy"
+  type        = number
+  default     = 1
+  validation {
+    condition     = var.vm_count > 0
+    error_message = "VM count must be greater than 0"
+  }
+}
+
 variable "vsphere_datacenter" {
   description = "Name of the vSphere Datacenter"
   type        = string
@@ -15,5 +25,4 @@ variable "vsphere_datacenter" {
     condition     = length(var.vsphere_datacenter) > 0
     error_message = "vSphere Datacenter name cannot be empty"
   }
-
 }

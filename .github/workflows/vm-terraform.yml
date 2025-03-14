@@ -1,4 +1,4 @@
-name: Terraform Apply
+name: VM Terraform
 
 on:
   workflow_dispatch:
@@ -15,11 +15,11 @@ on:
         required: false
         type: string
 
-      # app_version:
-      #   description: "use Version"
-      #   default: "v1.0.1"
-      #   required: false
-      #   type: string
+      vm_count:
+        description: "vm count"
+        default: 1
+        required: false
+        type: number
 
 jobs:
   terraform:
@@ -29,26 +29,21 @@ jobs:
       - name: Checkout Terraform Code
         uses: actions/checkout@v3
         with:
-          # fetch-depth: 0
-          ref: ${{ github.event.inputs.app_version }}
-
-      # - name: Checkout TF Vars Repo
-      #   uses: actions/checkout@v3
-      #   with:
-      #     repository: JDeeptaTech/tf-vars-repo
-      #     token: ${{ secrets.GITHUB_TOKEN }}
-      #     path: tf-vars
+          fetch-depth: 0
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
-        # with:
-        #   terraform_version: 1.10.5
+        with:
+          terraform_version: 1.10.5 
 
       - name: Change script permissions
         run: chmod +x ./scripts/*.sh
 
       - name: Generate Terraform variables file
-        run: ./scripts/generate-tfvars.sh ./src "${{ github.event.inputs.requestor }}" "${{ github.event.inputs.datacenter }}"
+        run: ./scripts/generate-tfvars.sh ./src \
+          "${{ github.event.inputs.requestor }}" \
+          "${{ github.event.inputs.datacenter }}" \
+          "${{ github.event.inputs.vm_count }}"
 
       - name: Initialize Terraform
         run: terraform -chdir=src init
