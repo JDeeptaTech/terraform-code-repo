@@ -40,10 +40,7 @@ jobs:
         run: chmod +x ./scripts/*.sh
 
       - name: Generate Terraform variables file
-        run: ./scripts/generate-tfvars.sh ./src \
-          "${{ github.event.inputs.requestor }}" \
-          "${{ github.event.inputs.datacenter }}" \
-          "${{ github.event.inputs.vm_count }}"
+        run: ./scripts/generate-tfvars.sh ./src "${{ github.event.inputs.requestor }}" "${{ github.event.inputs.datacenter }}" "${{ github.event.inputs.vm_count }}"
 
       - name: Initialize Terraform
         run: terraform -chdir=src init
