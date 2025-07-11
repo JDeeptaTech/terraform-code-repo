@@ -11,6 +11,230 @@ except AttributeError:
 else:
     ssl._create_default_https_context = _create_unverified_https_context
 
+# Disable all warnings for requests (urllib3)
+# ⚠️ Only for development/testing. Do not use in production without understanding risks.
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# --- Configuration ---
+VCENTER_HOST = "your_vcenter_ip_or_hostname"
+VCENTER_USERNAME = "your_vcenter_username"
+VCENTER_PASSWORD = "your_vcenter_password"
+
+# --- Helper Functions ---
+def get_session_id(vcenter_host, username, password):
+    """Authenticates with vCenter and returns a session ID."""
+    auth_url = f"https://{vcenter_host}/rest/com/vmware/cis/session"
+    headers = {"Accept": "application/json"}
+    try:
+        response = requests.post(auth_url, auth=(username, password), headers=headers, verify=False)
+        response.raise_for_status()
+        session_id = response.json().get("value")
+        print("✅ Successfully obtained vCenter session ID.")
+        return session_id
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error during authentication: {e}")
+        return None
+
+def logout(vcenter_host, session_id):
+    """Logs out from the vCenter session."""
+    logout_url = f"https://{vcenter_host}/rest/com/vmware/cis/session"
+    headers = {"vmware-api-session-id": session_id}
+    try:
+        requests.delete(logout_url, headers=headers, verify=False)
+        print("👋 Successfully logged out from vCenter session.")
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ Error during logout: {e}")
+
+def get_clusters(vcenter_host, session_id):
+    """Retrieves a list of all clusters."""
+    clusters_url = f"https://{vcenter_host}/rest/vcenter/cluster"
+    headers = {"vmware-api-session-id": session_id, "Accept": "application/json"}
+    try:
+        response = requests.get(clusters_url, headers=headers, verify=False)
+        response.raise_for_status()
+        print("✅ Successfully retrieved clusters.")
+        return response.json().get("value", [])
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error retrieving clusters: {e}")
+        return []
+
+def get_networks(vcenter_host, session_id):
+    """Retrieves a list of all networks (standard and distributed)."""
+    networks_url = f"https://{vcenter_host}/rest/vcenter/network"
+    headers = {"vmware-api-session-id": session_id, "Accept": "application/json"}
+    try:
+        response = requests.get(networks_url, headers=headers, verify=False)
+        response.raise_for_status()
+        print("✅ Successfully retrieved networks.")
+        return response.json().get("value", [])
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error retrieving networks: {e}")
+        return []
+
+def get_tags_for_object(vcenter_host, session_id, object_id):
+    """Retrieves tag IDs associated with a specific vCenter object."""
+    tag_association_url = f"https://{vcenter_host}/rest/com/vmware/cis/tagging/tag-association?object_id={object_id}"
+    headers = {"vmware-api-session-id": session_id, "Accept": "application/json"}
+    try:
+        response = requests.get(tag_association_url, headers=headers, verify=False)
+        response.raise_for_status()
+        return response.json().get("value", []) # This returns a list of tag_ids
+    except requests.exceptions.RequestException as e:
+        return []
+
+def get_tag_details(vcenter_host, session_id, tag_id):
+    """Retrieves details of a specific tag."""
+    tag_url = f"https://{vcenter_host}/rest/com/vmware/cis/tagging/tag/{tag_id}"
+    headers = {"vmware-api-session-id": session_id, "Accept": "application/json"}
+    try:
+        response = requests.get(tag_url, headers=headers, verify=False)
+        response.raise_for_status()
+        return response.json().get("value")
+    except requests.exceptions.RequestException as e:
+        return None
+
+def get_category_details(vcenter_host, session_id, category_id):
+    """Retrieves details of a specific tag category."""
+    category_url = f"https://{vcenter_host}/rest/com/vmware/cis/tagging/category/{category_id}"
+    headers = {"vmware-api-session-id": session_id, "Accept": "application/json"}
+    try:
+        response = requests.get(category_url, headers=headers, verify=False)
+        response.raise_for_status()
+        return response.json().get("value")
+    except requests.exceptions.RequestException as e:
+        return None
+
+def get_custom_attributes_for_object(vcenter_host, session_id, object_id):
+    """
+    Placeholder: Custom attributes for Network objects are not directly exposed
+    via the /vcenter/network REST API.
+    """
+    return {} # Returning an empty dictionary as custom attributes are not directly exposed on /vcenter/network
+
+# --- Main Logic ---
+def list_networks_and_clusters_with_metadata(vcenter_host, username, password):
+    """Lists networks, associated clusters, tags, and custom attributes."""
+    session_id = get_session_id(vcenter_host, username, password)
+    if not session_id:
+        return
+
+    clusters = get_clusters(vcenter_host, session_id)
+    networks = get_networks(vcenter_host, session_id)
+
+    print("\n--- Networks and Clusters Summary ---")
+
+    print("\n## Clusters:")
+    if clusters:
+        for cluster in clusters:
+            print(f"- **Name**: {cluster.get('name')}, **ID**: {cluster.get('cluster')}")
+    else:
+        print("No clusters found.")
+
+    print("\n## Networks:")
+    if networks:
+        network_types = {}
+        for net in networks:
+            net_type = net.get('type', 'UNKNOWN')
+            if net_type not in network_types:
+                network_types[net_type] = []
+            network_types[net_type].append(net)
+
+        # Cache for category details to avoid redundant API calls
+        category_cache = {} 
+
+        for net_type, net_list in network_types.items():
+            print(f"\n### {net_type.replace('_', ' ').title()} Networks:")
+            for net in net_list:
+                network_id = net.get('network')
+                network_name = net.get('name')
+                
+                print(f"- **Name**: {network_name}, **ID**: {network_id}")
+                
+                if 'distributed_switch' in net:
+                    print(f"  (Belongs to Distributed Switch ID: {net['distributed_switch']})")
+                
+                # --- Get Tags ---
+                associated_tag_ids = get_tags_for_object(vcenter_host, session_id, network_id)
+                
+                if associated_tag_ids:
+                    print("  **Tags**:")
+                    for tag_id in associated_tag_ids:
+                        tag_details = get_tag_details(vcenter_host, session_id, tag_id)
+                        if tag_details:
+                            tag_name = tag_details.get('name')
+                            tag_description = tag_details.get('description', 'N/A')
+                            category_id = tag_details.get('category_id')
+
+                            category_name = "N/A"
+                            category_cardinality = "N/A"
+
+                            if category_id:
+                                if category_id not in category_cache:
+                                    category_details = get_category_details(vcenter_host, session_id, category_id)
+                                    if category_details:
+                                        category_cache[category_id] = {
+                                            "name": category_details.get('name'),
+                                            "cardinality": category_details.get('cardinality')
+                                        }
+                                    else:
+                                        category_cache[category_id] = {"name": "Unknown", "cardinality": "Unknown"}
+                                
+                                category_info = category_cache.get(category_id)
+                                if category_info:
+                                    category_name = category_info['name']
+                                    category_cardinality = category_info['cardinality']
+
+                            print(f"    - **Tag**: {tag_name}")
+                            print(f"      Description: {tag_description}")
+                            print(f"      **Category**: {category_name} (Cardinality: {category_cardinality})")
+                        else:
+                            print(f"    - Tag ID: {tag_id} (Details not retrieved)")
+                else:
+                    print("  No tags associated.")
+
+                # --- Get Custom Attributes ---
+                custom_attributes = get_custom_attributes_for_object(vcenter_host, session_id, network_id)
+                
+                if custom_attributes:
+                    print("  **Custom Attributes**:")
+                    for key, value in custom_attributes.items():
+                        print(f"    - {key}: {value}")
+                else:
+                    print("  No custom attributes associated (or not directly retrievable via /vcenter/network API).")
+
+    else:
+        print("No networks found.")
+
+    # --- Logout ---
+    logout(vcenter_host, session_id)
+
+# --- Execute the script ---
+if __name__ == "__main__":
+    # !!! IMPORTANT: Replace with your actual vCenter details !!!
+    VCENTER_HOST = "your_vcenter_ip_or_hostname"
+    VCENTER_USERNAME = "your_vcenter_username"
+    VCENTER_PASSWORD = "your_vcenter_password"
+    
+    if VCENTER_HOST == "your_vcenter_ip_or_hostname":
+        print("Please update VCENTER_HOST, VCENTER_USERNAME, and VCENTER_PASSWORD with your vCenter details.")
+    else:
+        list_networks_and_clusters_with_metadata(VCENTER_HOST, VCENTER_USERNAME, VCENTER_PASSWORD)
+```
+
+```py
+import requests
+import json
+import ssl
+
+# Suppress insecure request warnings if you're not validating SSL certificates
+try:
+    _create_unverified_https_context = ssl._create_unverified_context
+except AttributeError:
+    pass
+else:
+    ssl._create_default_https_context = _create_unverified_https_context
+
 # --- Configuration ---
 VCENTER_HOST = "your_vcenter_ip_or_hostname"
 VCENTER_USERNAME = "your_vcenter_username"
