@@ -4,6 +4,175 @@ import json
 import ssl
 
 # Suppress insecure request warnings if you're not validating SSL certificates
+try:
+    _create_unverified_https_context = ssl._create_unverified_context
+except AttributeError:
+    pass
+else:
+    ssl._create_default_https_context = _create_unverified_https_context
+
+# --- Configuration ---
+VCENTER_HOST = "your_vcenter_ip_or_hostname"
+VCENTER_USERNAME = "your_vcenter_username"
+VCENTER_PASSWORD = "your_vcenter_password"
+
+# --- Helper Functions ---
+def get_session_id(vcenter_host, username, password):
+    """Authenticates with vCenter and returns a session ID."""
+    auth_url = f"https://{vcenter_host}/rest/com/vmware/cis/session"
+    headers = {"Accept": "application/json"}
+    try:
+        response = requests.post(auth_url, auth=(username, password), headers=headers, verify=False)
+        response.raise_for_status()
+        session_id = response.json().get("value")
+        print("✅ Successfully obtained vCenter session ID.")
+        return session_id
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error during authentication: {e}")
+        return None
+
+def logout(vcenter_host, session_id):
+    """Logs out from the vCenter session."""
+    logout_url = f"https://{vcenter_host}/rest/com/vmware/cis/session"
+    headers = {"vmware-api-session-id": session_id}
+    try:
+        requests.delete(logout_url, headers=headers, verify=False)
+        print("👋 Successfully logged out from vCenter session.")
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ Error during logout: {e}")
+
+def get_clusters(vcenter_host, session_id):
+    """Retrieves a list of all clusters."""
+    clusters_url = f"https://{vcenter_host}/rest/vcenter/cluster"
+    headers = {"vmware-api-session-id": session_id, "Accept": "application/json"}
+    try:
+        response = requests.get(clusters_url, headers=headers, verify=False)
+        response.raise_for_status()
+        print("✅ Successfully retrieved clusters.")
+        return response.json().get("value", [])
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error retrieving clusters: {e}")
+        return []
+
+def get_networks(vcenter_host, session_id):
+    """Retrieves a list of all networks (standard and distributed)."""
+    networks_url = f"https://{vcenter_host}/rest/vcenter/network"
+    headers = {"vmware-api-session-id": session_id, "Accept": "application/json"}
+    try:
+        response = requests.get(networks_url, headers=headers, verify=False)
+        response.raise_for_status()
+        print("✅ Successfully retrieved networks.")
+        return response.json().get("value", [])
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error retrieving networks: {e}")
+        return []
+
+def get_tags_for_object(vcenter_host, session_id, object_id, object_type="Network"):
+    """
+    Retrieves tags associated with a specific vCenter object (e.g., a network).
+    The object_type is used for logging purposes.
+    """
+    # The API endpoint for listing tags on an object is:
+    # GET /rest/com/vmware/cis/tagging/tag-association?object_id={object_id}
+    tag_association_url = f"https://{vcenter_host}/rest/com/vmware/cis/tagging/tag-association?object_id={object_id}"
+    headers = {"vmware-api-session-id": session_id, "Accept": "application/json"}
+    try:
+        response = requests.get(tag_association_url, headers=headers, verify=False)
+        response.raise_for_status()
+        return response.json().get("value", []) # This returns a list of tag_ids
+    except requests.exceptions.RequestException as e:
+        # print(f"⚠️ Warning: Could not retrieve tags for {object_type} ID {object_id}: {e}")
+        return []
+
+def get_tag_details(vcenter_host, session_id, tag_id):
+    """Retrieves details of a specific tag."""
+    tag_url = f"https://{vcenter_host}/rest/com/vmware/cis/tagging/tag/{tag_id}"
+    headers = {"vmware-api-session-id": session_id, "Accept": "application/json"}
+    try:
+        response = requests.get(tag_url, headers=headers, verify=False)
+        response.raise_for_status()
+        return response.json().get("value")
+    except requests.exceptions.RequestException as e:
+        # print(f"⚠️ Warning: Could not retrieve details for tag ID {tag_id}: {e}")
+        return None
+
+# --- Main Logic ---
+def list_networks_and_clusters_with_tags(vcenter_host, username, password):
+    """Lists networks and their associated clusters and tags."""
+    session_id = get_session_id(vcenter_host, username, password)
+    if not session_id:
+        return
+
+    clusters = get_clusters(vcenter_host, session_id)
+    networks = get_networks(vcenter_host, session_id)
+
+    print("\n--- Networks and Clusters Summary ---")
+
+    print("\n## Clusters:")
+    if clusters:
+        for cluster in clusters:
+            print(f"- **Name**: {cluster.get('name')}, **ID**: {cluster.get('cluster')}")
+    else:
+        print("No clusters found.")
+
+    print("\n## Networks:")
+    if networks:
+        network_types = {}
+        for net in networks:
+            net_type = net.get('type', 'UNKNOWN')
+            if net_type not in network_types:
+                network_types[net_type] = []
+            network_types[net_type].append(net)
+
+        for net_type, net_list in network_types.items():
+            print(f"\n### {net_type.replace('_', ' ').title()} Networks:")
+            for net in net_list:
+                network_id = net.get('network')
+                network_name = net.get('name')
+                
+                print(f"- **Name**: {network_name}, **ID**: {network_id}")
+                
+                if 'distributed_switch' in net:
+                    print(f"  (Belongs to Distributed Switch ID: {net['distributed_switch']})")
+                
+                # Get tags associated with this network
+                associated_tag_ids = get_tags_for_object(vcenter_host, session_id, network_id, "Network")
+                
+                if associated_tag_ids:
+                    print("  **Tags**:")
+                    for tag_id in associated_tag_ids:
+                        tag_details = get_tag_details(vcenter_host, session_id, tag_id)
+                        if tag_details:
+                            print(f"    - Name: {tag_details.get('name')}, Category ID: {tag_details.get('category_id')}, Description: {tag_details.get('description', 'N/A')}")
+                        else:
+                            print(f"    - Tag ID: {tag_id} (Details not retrieved)")
+                else:
+                    print("  No tags associated.")
+    else:
+        print("No networks found.")
+
+    # --- Logout ---
+    logout(vcenter_host, session_id)
+
+# --- Execute the script ---
+if __name__ == "__main__":
+    # !!! IMPORTANT: Replace with your actual vCenter details !!!
+    VCENTER_HOST = "your_vcenter_ip_or_hostname"
+    VCENTER_USERNAME = "your_vcenter_username"
+    VCENTER_PASSWORD = "your_vcenter_password"
+    
+    if VCENTER_HOST == "your_vcenter_ip_or_hostname":
+        print("Please update VCENTER_HOST, VCENTER_USERNAME, and VCENTER_PASSWORD with your vCenter details.")
+    else:
+        list_networks_and_clusters_with_tags(VCENTER_HOST, VCENTER_USERNAME, VCENTER_PASSWORD)
+
+```
+```py
+import requests
+import json
+import ssl
+
+# Suppress insecure request warnings if you're not validating SSL certificates
 # In a production environment, you should always validate SSL certificates.
 try:
     _create_unverified_https_context = ssl._create_unverified_context
