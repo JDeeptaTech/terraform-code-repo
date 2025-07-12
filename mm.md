@@ -1,3 +1,42 @@
+You've hit upon one of the more challenging aspects of retrieving network topology with the vCenter REST API directly: there isn't a single, straightforward API endpoint that directly links a network object (like a port group) to a specific cluster.
+
+This is because of the way vSphere networking is designed:
+
+Standard Port Groups: These are local to a specific ESXi host and its Standard Virtual Switches. A host belongs to a cluster. So the linkage is Network (Port Group) -> Host -> Cluster.
+
+Distributed Port Groups (DPGs): These are part of a Distributed Virtual Switch (DVS), which spans multiple ESXi hosts across potentially several clusters within a datacenter. A DPG isn't "in" a cluster directly; rather, hosts in clusters connect to the DVS and its DPGs. The linkage here is more like Network (DPG) -> DVS -> (Multiple Hosts -> Multiple Clusters).
+
+Therefore, to know "which network is linked to which cluster," you need to infer this association by traversing the vCenter inventory.
+
+How to Infer Network-to-Cluster Association
+The most reliable way to achieve this using the vCenter REST API is by:
+
+Get all Clusters.
+
+Get all Hosts for each cluster.
+
+For each Host, get its networking configuration. This is the crucial step. You need to identify which networks (standard port groups or DPGs) that host is configured to use.
+
+Then, map those networks back to the clusters via the hosts.
+
+Challenges with the vcenter/network REST API Endpoint
+The /rest/vcenter/network endpoint primarily lists abstract network objects. It doesn't inherently tell you which hosts are connected to a standard port group, or which DVS a DPG is on in a way that easily maps back to hosts and thus clusters.
+
+The More Detailed API Calls Needed
+To get the host-to-network linkage via REST, you generally need to:
+
+Get all Hosts in a Cluster: GET /rest/vcenter/host?filter.clusters={cluster_id}
+
+For each Host, get its Network Adapters and associated networks: This is where it gets tricky. The GET /rest/vcenter/host/{host_id} endpoint does not always contain enough detail for network mappings. You often need to go deeper:
+
+GET /rest/vcenter/host/{host_id}/network - This endpoint provides information about the host's networking. It can list standard switches (standard_switches) and their associated port groups, and distributed switches (distributed_switches) the host is connected to.
+
+Within the standard_switches or distributed_switches details, you might find references to the specific network IDs or port group keys that correspond to the /rest/vcenter/network objects.
+
+Updated Strategy for Your Python Script
+I'll modify the script to implement this traversal logic. It will be significantly more complex than simply listing networks. We'll build a map: Network ID -> List of Cluster Names.
+
+
 ```py
 import requests
 import json
