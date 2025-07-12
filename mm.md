@@ -1,3 +1,312 @@
+```py
+from pyVim.connect import SmartConnectNoSSL, Disconnect
+from pyVmomi import vim
+import atexit
+import ssl
+import requests
+import json
+
+# --- Configuration ---
+VCENTER_HOST = "your_vcenter_ip_or_hostname"
+VCENTER_USERNAME = "your_vcenter_username"
+VCENTER_PASSWORD = "your_vcenter_password"
+
+# --- REST API Helper Functions (from previous examples) ---
+def get_session_id(vcenter_host, username, password):
+    """Authenticates with vCenter REST API and returns a session ID."""
+    auth_url = f"https://{vcenter_host}/rest/com/vmware/cis/session"
+    headers = {"Accept": "application/json"}
+    try:
+        response = requests.post(auth_url, auth=(username, password), headers=headers, verify=False) # verify=False for dev/test
+        response.raise_for_status()
+        session_id = response.json().get("value")
+        # print("✅ Successfully obtained vCenter REST API session ID.")
+        return session_id
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Error during REST API authentication: {e}")
+        return None
+
+def logout_rest_api(vcenter_host, session_id):
+    """Logs out from the vCenter REST API session."""
+    logout_url = f"https://{vcenter_host}/rest/com/vmware/cis/session"
+    headers = {"vmware-api-session-id": session_id}
+    try:
+        requests.delete(logout_url, headers=headers, verify=False) # verify=False for dev/test
+        # print("👋 Successfully logged out from vCenter REST API session.")
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ Error during REST API logout: {e}")
+
+def get_tags_for_object_rest(vcenter_host, session_id, object_id):
+    """Retrieves tag IDs associated with a specific vCenter object using REST API."""
+    tag_association_url = f"https://{vcenter_host}/rest/com/vmware/cis/tagging/tag-association?object_id={object_id}"
+    headers = {"vmware-api-session-id": session_id, "Accept": "application/json"}
+    try:
+        response = requests.get(tag_association_url, headers=headers, verify=False)
+        response.raise_for_status()
+        return response.json().get("value", []) # Returns a list of tag_ids
+    except requests.exceptions.RequestException as e:
+        # print(f"Warning: Could not retrieve tags for object ID {object_id} via REST: {e}")
+        return []
+
+def get_tag_details_rest(vcenter_host, session_id, tag_id):
+    """Retrieves details of a specific tag using REST API."""
+    tag_url = f"https://{vcenter_host}/rest/com/vmware/cis/tagging/tag/{tag_id}"
+    headers = {"vmware-api-session-id": session_id, "Accept": "application/json"}
+    try:
+        response = requests.get(tag_url, headers=headers, verify=False)
+        response.raise_for_status()
+        return response.json().get("value")
+    except requests.exceptions.RequestException as e:
+        # print(f"Warning: Could not retrieve details for tag ID {tag_id} via REST: {e}")
+        return None
+
+def get_category_details_rest(vcenter_host, session_id, category_id):
+    """Retrieves details of a specific tag category using REST API."""
+    category_url = f"https://{vcenter_host}/rest/com/vmware/cis/tagging/category/{category_id}"
+    headers = {"vmware-api-session-id": session_id, "Accept": "application/json"}
+    try:
+        response = requests.get(category_url, headers=headers, verify=False)
+        response.raise_for_status()
+        return response.json().get("value")
+    except requests.exceptions.RequestException as e:
+        # print(f"Warning: Could not retrieve details for category ID {category_id} via REST: {e}")
+        return None
+
+# --- Main PyVmomi Logic ---
+def get_vcenter_networks_clusters_and_tags(host, user, pwd):
+    # PyVmomi SSL context (unverified for development)
+    context = None
+    if hasattr(ssl, '_create_unverified_context'):
+        context = ssl._create_unverified_context()
+
+    si = None
+    rest_session_id = None
+    try:
+        # Connect to PyVmomi
+        print("🚀 Connecting to vCenter via PyVmomi...")
+        si = SmartConnectNoSSL(host=host, user=user, pwd=pwd, port=443, sslContext=context)
+        atexit.register(Disconnect, si) # Ensure PyVmomi session disconnects on exit
+        print("✅ PyVmomi connection established.")
+
+        content = si.RetrieveContent()
+
+        # Connect to REST API for Tags
+        print("🌐 Obtaining REST API session for Tagging data...")
+        rest_session_id = get_session_id(host, user, pwd)
+        if not rest_session_id:
+            return # Exit if REST auth fails
+        print("✅ REST API session obtained.")
+
+        # Dictionary to store Network MOR -> {Network Name, Type, Associated Clusters, Tags, etc.}
+        networks_info = {}
+        
+        # --- Step 1: Get all Networks (Standard and Distributed Port Groups) using PyVmomi ---
+        # We need this to map network MORs to names and initial details
+        network_view = content.viewManager.CreateContainerView(content.rootFolder, [vim.Network, vim.dvs.DistributedVirtualPortgroup], True)
+        all_networks_objects = network_view.view
+        network_view.Destroy() # Destroy the view to free resources
+
+        # Populate initial networks_info with basic details and placeholder for tags/clusters
+        for network_obj in all_networks_objects:
+            networks_info[network_obj._moId] = {
+                "name": network_obj.name,
+                "id": network_obj._moId,
+                "type": "Distributed Port Group" if isinstance(network_obj, vim.dvs.DistributedVirtualPortgroup) else "Standard Port Group",
+                "associated_clusters": set(), # Use a set to avoid duplicate cluster names
+                "tags": [], # To be populated by REST API later
+                "custom_attributes": {} # Placeholder, generally better with PyVmomi but complex for Networks
+            }
+            if isinstance(network_obj, vim.dvs.DistributedVirtualPortgroup):
+                if hasattr(network_obj.config.distributedVirtualSwitch, 'name'): # Check if DVS name is accessible
+                    networks_info[network_obj._moId]['distributed_switch_name'] = network_obj.config.distributedVirtualSwitch.name
+                networks_info[network_obj._moId]['distributed_switch_id'] = network_obj.config.distributedVirtualSwitch._moId
+
+
+        # --- Step 2: Get Clusters, Hosts, and infer Network-to-Cluster mapping using PyVmomi ---
+        print("\n🔎 Discovering Network-to-Cluster Associations via Host Network Config...")
+        cluster_view = content.viewManager.CreateContainerView(content.rootFolder, [vim.ClusterComputeResource], True)
+        clusters = cluster_view.view
+        cluster_view.Destroy()
+
+        cluster_details_output = []
+        for cluster in clusters:
+            cluster_name = cluster.name
+            cluster_id = cluster._moId
+            cluster_details_output.append({"name": cluster_name, "id": cluster_id})
+
+            # Retrieve only 'host' property for cluster to get HostSystem MORs efficiently
+            cluster_props = content.propertyCollector.RetrieveContents(
+                [vim.PropertyCollector.FilterSpec(
+                    objectSet=[vim.PropertyCollector.ObjectSpec(obj=cluster, skip=False)],
+                    propSet=[vim.PropertyCollector.PropertySpec(type=vim.ClusterComputeResource, pathSet=['host'])]
+                )]
+            )
+            
+            host_mors_in_cluster = []
+            if cluster_props:
+                for obj_cont in cluster_props:
+                    for prop in obj_cont.propSet:
+                        if prop.name == 'host' and prop.val:
+                            host_mors_in_cluster.extend(prop.val)
+                            break
+            
+            # For each host in the cluster, get its network configuration
+            for host_mor in host_mors_in_cluster:
+                # Retrieve only 'config.network' property for each host efficiently
+                host_network_props = content.propertyCollector.RetrieveContents(
+                    [vim.PropertyCollector.FilterSpec(
+                        objectSet=[vim.PropertyCollector.ObjectSpec(obj=host_mor, skip=False)],
+                        propSet=[vim.PropertyCollector.PropertySpec(type=vim.HostSystem, pathSet=['config.network'])]
+                    )]
+                )
+                
+                host_network_config = None
+                if host_network_props:
+                    for obj_cont in host_network_props:
+                        for prop in obj_cont.propSet:
+                            if prop.name == 'config.network':
+                                host_network_config = prop.val
+                                break
+                        if host_network_config:
+                            break
+
+                if host_network_config:
+                    # Check Standard Virtual Switches (Standard Port Groups)
+                    for vswitch in host_network_config.vswitch:
+                        for pg in vswitch.portgroup:
+                            network_mor = pg.network
+                            if network_mor and network_mor._moId in networks_info:
+                                networks_info[network_mor._moId]["associated_clusters"].add(cluster_name)
+                    
+                    # Check all HostPortGroup objects (covers both standard and distributed)
+                    # The 'network' property on HostPortGroup points to vim.Network or vim.dvs.DistributedVirtualPortgroup
+                    for pg in host_network_config.portgroup:
+                        if hasattr(pg, 'network') and pg.network and pg.network._moId in networks_info:
+                            networks_info[pg.network._moId]["associated_clusters"].add(cluster_name)
+        
+        # --- Step 3: Populate Tags and Category Details using REST API ---
+        print("\n🏷️ Retrieving Tag and Category details via REST API...")
+        category_cache = {} # Cache for category details to avoid redundant API calls
+
+        for net_id, net_data in networks_info.items():
+            # Get tags associated with this network's MOR using REST API
+            associated_tag_ids = get_tags_for_object_rest(host, rest_session_id, net_id)
+            
+            for tag_id in associated_tag_ids:
+                tag_details = get_tag_details_rest(host, rest_session_id, tag_id)
+                if tag_details:
+                    tag_name = tag_details.get('name')
+                    tag_description = tag_details.get('description', 'N/A')
+                    category_id = tag_details.get('category_id')
+
+                    category_name = "N/A"
+                    category_cardinality = "N/A"
+
+                    if category_id:
+                        if category_id not in category_cache:
+                            cat_details = get_category_details_rest(host, rest_session_id, category_id)
+                            if cat_details:
+                                category_cache[category_id] = {
+                                    "name": cat_details.get('name'),
+                                    "cardinality": cat_details.get('cardinality')
+                                }
+                            else:
+                                category_cache[category_id] = {"name": "Unknown", "cardinality": "Unknown"}
+                        
+                        category_info = category_cache.get(category_id)
+                        if category_info:
+                            category_name = category_info['name']
+                            category_cardinality = category_info['cardinality']
+
+                    net_data["tags"].append({
+                        "name": tag_name,
+                        "description": tag_description,
+                        "category": {
+                            "name": category_name,
+                            "id": category_id,
+                            "cardinality": category_cardinality
+                        }
+                    })
+        
+        # --- Final Output ---
+        print("\n--- Final Summary of Networks, Clusters, and Tags ---")
+
+        print("\n## Clusters:")
+        if cluster_details_output:
+            for cluster in cluster_details_output:
+                print(f"- **Name**: {cluster['name']}, **ID**: {cluster['id']}")
+        else:
+            print("No clusters found.")
+
+        print("\n## Networks:")
+        if networks_info:
+            sorted_networks = sorted(networks_info.values(), key=lambda x: x['name'])
+            
+            networks_by_type_and_association = {}
+            for net_data in sorted_networks:
+                net_type = net_data['type']
+                associated_clusters_list = sorted(list(net_data['associated_clusters']))
+                cluster_key = ", ".join(associated_clusters_list) if associated_clusters_list else "Unassociated/Global"
+                
+                if net_type not in networks_by_type_and_association:
+                    networks_by_type_and_association[net_type] = {}
+                if cluster_key not in networks_by_type_and_association[net_type]:
+                    networks_by_type_and_association[net_type][cluster_key] = []
+                
+                networks_by_type_and_association[net_type][cluster_key].append(net_data)
+
+            for net_type, cluster_groups in networks_by_type_and_association.items():
+                print(f"\n### {net_type.replace('_', ' ').title()} Networks:")
+                for cluster_key, nets_list in cluster_groups.items():
+                    print(f"\n  Associated With: {cluster_key}")
+                    for net_data in nets_list:
+                        print(f"    - **Name**: {net_data['name']}, **ID**: {net_data['id']}")
+                        if net_data.get('distributed_switch_name'):
+                            print(f"      (Belongs to Distributed Switch: {net_data['distributed_switch_name']} / {net_data['distributed_switch_id']})")
+                        
+                        if net_data['tags']:
+                            print("      **Tags**:")
+                            for tag in net_data['tags']:
+                                print(f"        - **Tag**: {tag['name']}")
+                                print(f"          Description: {tag['description']}")
+                                print(f"          **Category**: {tag['category']['name']} (Cardinality: {tag['category']['cardinality']})")
+                        else:
+                            print("      No tags associated.")
+
+                        if net_data['custom_attributes']:
+                            print("      **Custom Attributes**:")
+                            for key, value in net_data['custom_attributes'].items():
+                                print(f"        - {key}: {value}")
+                        else:
+                            print("      No custom attributes found (Requires more specific PyVmomi calls or may not be available on Networks).")
+        else:
+            print("No networks found.")
+
+    except vim.fault.InvalidLogin as e:
+        print(f"❌ Login failed: {e.msg}")
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Network or REST API error: {e}")
+    except Exception as e:
+        print(f"❌ An unexpected error occurred: {e}")
+    finally:
+        if si:
+            Disconnect(si)
+        if rest_session_id:
+            logout_rest_api(host, rest_session_id)
+
+# --- Execute the script ---
+if __name__ == "__main__":
+    # !!! IMPORTANT: Replace with your actual vCenter details !!!
+    VCENTER_HOST = "your_vcenter_ip_or_hostname"
+    VCENTER_USERNAME = "your_vcenter_username"
+    VCENTER_PASSWORD = "your_vcenter_password"
+    
+    if VCENTER_HOST == "your_vcenter_ip_or_hostname":
+        print("Please update VCENTER_HOST, VCENTER_USERNAME, and VCENTER_PASSWORD with your vCenter details.")
+    else:
+        get_vcenter_networks_clusters_and_tags(VCENTER_HOST, VCENTER_USERNAME, VCENTER_PASSWORD)
+```
+
 You've hit upon one of the more challenging aspects of retrieving network topology with the vCenter REST API directly: there isn't a single, straightforward API endpoint that directly links a network object (like a port group) to a specific cluster.
 
 This is because of the way vSphere networking is designed:
