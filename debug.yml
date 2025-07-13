@@ -1,0 +1,49 @@
+```yml
+# tasks/splunk_log.yml
+- name: Send custom log to Splunk if condition met
+  ansible.builtin.uri:
+    url: "{{ splunk_hec_url }}"
+    method: POST
+    headers:
+      Authorization: "Splunk {{ splunk_hec_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      event: "{{ custom_log_message }}"
+      sourcetype: "{{ splunk_sourcetype | default('ansible:custom_logs') }}" # Added default for sourcetype
+      host: "{{ inventory_hostname }}"
+      fields:
+        ansible_playbook: "{{ ansible_playbook_dir | default('N/A') }}"
+        ansible_task: "{{ splunk_task_name | default('send_custom_log') }}" # Added default for task name
+    validate_certs: false
+    status_code: 200
+  when: send_splunk_log_condition | default(false) # Condition from variable
+  delegate_to: localhost
+  run_once: true
+  tags: [ "splunk", "log_event" ]
+
+---
+- name: My Main Playbook with Splunk Logging
+  hosts: your_target_hosts
+  gather_facts: true
+
+  vars:
+    # Variables defined globally for this playbook
+    splunk_hec_url: "https://your_splunk_hec_ip_or_hostname:8088/services/collector"
+    splunk_hec_token: "YOUR_SPLUNK_HEC_TOKEN"
+    send_splunk_log_condition: true # This variable controls the 'when' in splunk_log.yml
+    custom_log_message: "Playbook run completed successfully."
+    splunk_sourcetype: "ansible:playbook_status" # Specific sourcetype for this run
+    splunk_task_name: "playbook_completion_log"
+
+  tasks:
+    - name: Run main application tasks
+      ansible.builtin.debug:
+        msg: "Executing main tasks..."
+      # ... your primary deployment/configuration tasks ...
+
+    - name: Include Splunk logging task
+      ansensible.builtin.include_tasks:
+        file: tasks/splunk_log.yml
+      # No 'vars' here, as variables are inherited from the playbook's 'vars'
+```
