@@ -1,3 +1,161 @@
+```py
+from typing import Literal, Union, Dict, Any
+from fastapi import FastAPI, HTTPException, status, Depends, Header
+from pydantic import BaseModel, Field, ValidationError, root_validator
+from typing_extensions import Annotated # For Python < 3.9, use from typing import Annotated
+
+app = FastAPI()
+
+# --- Authentication and Authorization Dependencies ---
+
+# In a real application, you'd fetch this from a secure configuration or database
+VALID_API_KEY = "your-super-secret-api-key"
+AUTHORIZED_USER_ROLE = "admin" # Example role
+
+async def verify_api_key(x_api_key: Annotated[str | None, Header()] = None):
+    """
+    Dependency to verify a simple API key from the 'X-API-Key' header.
+    """
+    if x_api_key is None or x_api_key != VALID_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API Key"
+        )
+    # In a real app, you'd fetch user details based on the key
+    return {"user_id": "demo_user", "roles": [AUTHORIZED_USER_ROLE]}
+
+async def verify_admin_role(user: Annotated[dict, Depends(verify_api_key)]):
+    """
+    Dependency to check if the authenticated user has the 'admin' role.
+    """
+    if AUTHORIZED_USER_ROLE not in user.get("roles", []):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to perform this action"
+        )
+    return user
+
+# --- Pydantic Models (Same as before) ---
+
+class BaseConfig(BaseModel):
+    """
+    Base configuration model with common fields and a discriminator for OS.
+    """
+    os_type: Literal["windows", "linux", "macos"] = Field(
+        ...,
+        description="The operating system type."
+    )
+    version: str = Field(
+        ...,
+        description="The software version."
+    )
+    install_path: str = Field(
+        ...,
+        description="The installation path for the software."
+    )
+
+    @root_validator(pre=True)
+    def validate_os_specific_fields(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Dynamically validates fields based on the 'os_type' value.
+        This validator will dispatch to the appropriate OS-specific model for further validation.
+        """
+        os_type = values.get("os_type")
+        if os_type == "windows":
+            return WindowsConfig(**values).dict()
+        elif os_type == "linux":
+            return LinuxConfig(**values).dict()
+        elif os_type == "macos":
+            return MacOSConfig(**values).dict()
+        else:
+            raise ValueError(f"Unsupported OS type: {os_type}")
+
+
+class WindowsConfig(BaseConfig):
+    """
+    Configuration model specific to Windows.
+    Adds a 'registry_key' field and validates 'install_path'.
+    """
+    registry_key: str = Field(
+        ...,
+        description="Registry key specific to Windows installation."
+    )
+
+    @root_validator
+    def validate_windows_path(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        install_path = values.get("install_path")
+        if not install_path.startswith("C:\\") and not install_path.startswith("D:\\"):
+            raise ValueError("Windows install_path must start with 'C:\\' or 'D:\\'")
+        return values
+
+class LinuxConfig(BaseConfig):
+    """
+    Configuration model specific to Linux.
+    Adds a 'package_manager' field and validates 'install_path'.
+    """
+    package_manager: Literal["apt", "yum", "dnf"] = Field(
+        ...,
+        description="Package manager used on Linux."
+    )
+
+    @root_validator
+    def validate_linux_path(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        install_path = values.get("install_path")
+        if not install_path.startswith("/opt/") and not install_path.startswith("/usr/local/"):
+            raise ValueError("Linux install_path must start with '/opt/' or '/usr/local/'")
+        return values
+
+class MacOSConfig(BaseConfig):
+    """
+    Configuration model specific to macOS.
+    Adds a 'bundle_id' field and validates 'install_path'.
+    """
+    bundle_id: str = Field(
+        ...,
+        description="Bundle identifier for macOS applications."
+    )
+
+    @root_validator
+    def validate_macos_path(cls, values: Dict[str, Any]) -> Dict[str, Any]:
+        install_path = values.get("install_path")
+        if not install_path.startswith("/Applications/") and not install_path.startswith("/Users/"):
+            raise ValueError("macOS install_path must start with '/Applications/' or '/Users/'")
+        return values
+
+# --- FastAPI Endpoint with Authentication and Authorization ---
+
+@app.post("/secure-configure/")
+async def secure_configure_system(
+    config: BaseConfig,
+    # The order of dependencies matters: auth/authz runs *before* Pydantic validation
+    # If the dependencies raise an HTTPException, the Pydantic validation won't even be attempted.
+    current_user: Annotated[dict, Depends(verify_admin_role)]
+):
+    """
+    Endpoint to receive configuration based on OS type, protected by
+    API key authentication and admin role authorization.
+    """
+    return {
+        "message": "Configuration received successfully after auth/authz",
+        "config": config.dict(),
+        "authorized_by_user": current_user["user_id"]
+    }
+
+@app.exception_handler(ValidationError)
+async def validation_exception_handler(request, exc: ValidationError):
+    """
+    Custom exception handler for Pydantic validation errors.
+    """
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        detail={"errors": exc.errors()}
+    )
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+```
+
 ```yml
 # tasks/splunk_log.yml
 - name: Send custom log to Splunk if condition met
