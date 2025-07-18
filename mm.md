@@ -1,4 +1,120 @@
 ```py
+from pyVim.connect import SmartConnect, Disconnect
+from pyVmomi import vim
+import ssl
+import atexit
+
+# --- Configuration ---
+VCENTER_HOST = "your_vcenter_ip_or_hostname"
+VCENTER_USER = "your_vcenter_username"
+VCENTER_PASSWORD = "your_vcenter_password"
+
+# The name of the datastore you want to check (from your image)
+TARGET_DATASTORE_NAME = "GB-WGDCLAB-CL04-TL-HP-SANDPIT-DS"
+
+# --- Helper Function ---
+
+def get_obj_by_name(content, vimtype, name):
+    """
+    Helper to find a Managed Object by its type and name.
+    """
+    obj = None
+    container = content.viewManager.CreateContainerView(
+        content.rootFolder, [vimtype], True
+    )
+    for c in container.view:
+        if c.name == name:
+            obj = c
+            break
+    container.Destroy()
+    return obj
+
+# --- Main Script ---
+
+def main():
+    # Disable SSL certificate verification (for lab environments, use with caution in production)
+    s_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    s_context.check_hostname = False
+    s_context.verify_mode = ssl.CERT_NONE
+
+    si = None
+    try:
+        si = SmartConnect(
+            host=VCENTER_HOST,
+            user=VCENTER_USER,
+            pwd=VCENTER_PASSWORD,
+            sslContext=s_context
+        )
+        atexit.register(Disconnect, si)
+
+        content = si.RetrieveContent()
+
+        print(f"Connecting to vCenter: {VCENTER_HOST}\n")
+        print(f"Searching for datastore: '{TARGET_DATASTORE_NAME}'")
+
+        datastore = get_obj_by_name(content, vim.Datastore, TARGET_DATASTORE_NAME)
+
+        if datastore:
+            print(f"Found datastore: '{datastore.name}' (MoRef ID: {datastore._moId})")
+
+            # Check if the datastore is part of a Datastore Cluster
+            # A datastore's parent is its Datacenter unless it's in a Datastore Cluster.
+            # The more robust way to check for a Datastore Cluster association
+            # is through its parent property, which would be the DatastoreCluster object itself.
+            # However, for datastores, the folder structure is often like:
+            # Datacenter -> DatastoreFolder -> Datastore OR DatastoreCluster -> Datastore
+
+            # The 'parent' property of a Datastore object refers to its immediate parent
+            # in the inventory hierarchy. If it's directly under a DatastoreFolder
+            # then its parent will be that folder.
+            # If it's part of a Datastore Cluster, its immediate parent *in the inventory view*
+            # is often the Datastore Cluster object itself.
+
+            # Let's verify the parent type
+            if datastore.parent:
+                if isinstance(datastore.parent, vim.StoragePod):
+                    print(f"  This datastore is part of a Datastore Cluster (StoragePod): '{datastore.parent.name}'")
+                elif isinstance(datastore.parent, vim.Folder):
+                    print(f"  This datastore is in folder: '{datastore.parent.name}'. Checking for association via StorageResourceManager...")
+                    # Even if the direct parent is a folder, it might still be associated
+                    # with a StoragePod through StorageResourceManager.
+                    # This is the most reliable way to find which StoragePod owns a Datastore.
+
+                    # Iterate through all StoragePods (Datastore Clusters)
+                    # and check their child datastores.
+                    storage_pods = content.viewManager.CreateContainerView(
+                        content.rootFolder, [vim.StoragePod], True
+                    ).view
+
+                    found_in_cluster = False
+                    for pod in storage_pods:
+                        if datastore in pod.childEntity:
+                            print(f"  This datastore is associated with Datastore Cluster: '{pod.name}'")
+                            found_in_cluster = True
+                            break
+                    if not found_in_cluster:
+                        print("  This datastore is not found within any Datastore Cluster.")
+                else:
+                    print(f"  This datastore's parent is of type: {type(datastore.parent)}")
+            else:
+                print("  This datastore has no parent (unlikely in typical setups).")
+
+        else:
+            print(f"Datastore '{TARGET_DATASTORE_NAME}' not found.")
+
+    except vim.fault.InvalidLogin as e:
+        print(f"Authentication error: {e.msg}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        if si:
+            Disconnect(si)
+
+if __name__ == "__main__":
+    main()
+```
+
+```py
 from pyVim.connect import SmartConnectNoSSL, Disconnect
 from pyVmomi import vim
 import atexit
