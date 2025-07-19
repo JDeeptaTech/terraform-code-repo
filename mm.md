@@ -76,21 +76,26 @@ def main():
             # Get Cluster Capacity and Usage
             # ClusterComputeResource has a 'summary' property for aggregated data
             cluster_summary = cluster.summary
-            cluster_quick_stats = cluster_summary.quickStats
+            
+            # For Cluster, overall CPU/Memory usage are directly on the summary, not quickStats
             cluster_total_cpu_mhz = cluster_summary.totalCpu
             cluster_total_mem_mb = cluster_summary.totalMemory / (1024 * 1024) # Convert bytes to MB
+            
+            # Correct access for current usage
+            cluster_current_cpu_usage = cluster_summary.currentCpuUsage
+            cluster_current_memory_usage = cluster_summary.currentMemoryUsage
 
             print("\n  Cluster Capacity and Usage:")
             print("    CPU:")
             print(f"      Total Capacity: {cluster_total_cpu_mhz:.2f} MHz")
-            print(f"      Current Usage: {cluster_quick_stats.overallCpuUsage:.2f} MHz")
-            cpu_usage_percent = (cluster_quick_stats.overallCpuUsage / cluster_total_cpu_mhz) * 100 if cluster_total_cpu_mhz > 0 else 0
+            print(f"      Current Usage: {cluster_current_cpu_usage:.2f} MHz")
+            cpu_usage_percent = (cluster_current_cpu_usage / cluster_total_cpu_mhz) * 100 if cluster_total_cpu_mhz > 0 else 0
             print(f"      Usage Percentage: {cpu_usage_percent:.2f}%")
 
             print("    Memory:")
             print(f"      Total Capacity: {cluster_total_mem_mb:.2f} MB")
-            print(f"      Current Usage: {cluster_quick_stats.overallMemoryUsage:.2f} MB")
-            mem_usage_percent = (cluster_quick_stats.overallMemoryUsage / cluster_total_mem_mb) * 100 if cluster_total_mem_mb > 0 else 0
+            print(f"      Current Usage: {cluster_current_memory_usage:.2f} MB")
+            mem_usage_percent = (cluster_current_memory_usage / cluster_total_mem_mb) * 100 if cluster_total_mem_mb > 0 else 0
             print(f"      Usage Percentage: {mem_usage_percent:.2f}%")
 
             # For Storage, we need to aggregate from datastores attached to the cluster
@@ -103,19 +108,11 @@ def main():
                 ds_summary = datastore.summary
                 total_storage_capacity_gb += convert_bytes_to_gb(ds_summary.capacity)
                 total_storage_free_gb += convert_bytes_to_gb(ds_summary.freeSpace)
-                # For provisioned space, you typically sum up the committed and uncommitted space of all VMs
-                # The 'uncommitted' property on datastore summary is for thin-provisioned space that's not yet consumed
-                # A more precise way would be to sum disk sizes of all VMs on this datastore.
-                # For simplicity here, we'll calculate used as capacity - free.
                 total_storage_used_gb += convert_bytes_to_gb(ds_summary.capacity - ds_summary.freeSpace)
 
-                # If you want to show provisioned based on summary:
-                # If the datastore summary has 'uncommitted' (e.g., vSAN, thin provisioned storage pool)
                 if hasattr(ds_summary, 'uncommitted'):
-                    # Provisioned is often capacity - free + uncommitted, representing potential full usage
                     total_storage_provisioned_gb += convert_bytes_to_gb(ds_summary.capacity - ds_summary.freeSpace + ds_summary.uncommitted)
                 else:
-                    # For thick provisioning, provisioned is effectively used (capacity - free)
                     total_storage_provisioned_gb += convert_bytes_to_gb(ds_summary.capacity - ds_summary.freeSpace)
 
 
@@ -139,7 +136,7 @@ def main():
 
                     host_summary = host.summary
                     host_hardware = host.hardware
-                    host_quick_stats = host_summary.quickStats
+                    host_quick_stats = host_summary.quickStats # This is correct for HostSystem.Summary
 
                     # CPU
                     host_cpu_capacity_mhz = host_hardware.cpuInfo.numCpuCores * host_hardware.cpuInfo.hz / 1000000
