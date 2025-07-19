@@ -1,3 +1,174 @@
+``` py
+import ssl
+from vmware.vapi.lib.connect import get_requests_connector
+from vmware.vapi.stdlib.client.factories import StubConfigurationFactory
+from vmware.vapi.vsphere.client import create_vsphere_client
+
+def get_resources_with_multiple_tags(vcenter_host, username, password, tag_category_pairs, disable_ssl_verification=True):
+    """
+    Connects to vCenter and retrieves a list of VMs with any of the specified tags.
+
+    Args:
+        vcenter_host (str): The IP address or FQDN of the vCenter Server.
+        username (str): The vCenter username.
+        password (str): The vCenter password.
+        tag_category_pairs (list): A list of dictionaries, where each dictionary
+                                   has 'tag_name' and 'category_name' keys.
+                                   Example: [{'tag_name': 'WebTier', 'category_name': 'Application'},
+                                             {'tag_name': 'Prod', 'category_name': 'Environment'}]
+        disable_ssl_verification (bool): If True, disables SSL certificate verification.
+                                          Use with caution in production.
+
+    Returns:
+        list: A list of dictionaries, where each dictionary contains
+              'name', 'id', 'type', and 'matching_tags' (a list of
+              'category:tag_name' strings that matched the input criteria).
+              Returns an empty list if no resources are found or an error occurs.
+    """
+
+    session = None
+    if disable_ssl_verification:
+        # Disable SSL certificate verification (use only for testing/development)
+        context = ssl._create_unverified_context()
+        session = get_requests_connector(ssl_context=context)._requests_session
+
+    try:
+        # Create a vSphere client
+        vsphere_client = create_vsphere_client(
+            server=vcenter_host,
+            username=username,
+            password=password,
+            session=session
+        )
+
+        print(f"Successfully connected to vCenter: {vcenter_host}")
+
+        # 1. Get all Categories and Tags once to build lookup maps
+        category_svc = vsphere_client.tagging.Category
+        all_categories = category_svc.list()
+        category_name_to_id = {cat.name: cat.id for cat in all_categories}
+        category_id_to_name = {cat.id: cat.name for cat in all_categories}
+
+        tag_svc = vsphere_client.tagging.Tag
+        all_tags = tag_svc.list()
+        # Map tag_name and category_id to tag_id for quick lookup
+        tag_lookup_map = {}
+        tag_id_to_full_name = {} # For formatting output tags
+        for tag in all_tags:
+            if tag.category_id in category_id_to_name: # Ensure category exists
+                cat_name = category_id_to_name[tag.category_id]
+                tag_lookup_map[(tag.name, cat_name)] = tag.id
+                tag_id_to_full_name[tag.id] = f"{cat_name}:{tag.name}"
+
+        # 2. Identify the specific Tag IDs based on input tag_category_pairs
+        target_tag_ids = set()
+        for pair in tag_category_pairs:
+            tag_name = pair['tag_name']
+            category_name = pair['category_name']
+            
+            tag_id = tag_lookup_map.get((tag_name, category_name))
+            if tag_id:
+                target_tag_ids.add(tag_id)
+            else:
+                print(f"Warning: Tag '{tag_name}' in category '{category_name}' not found.")
+
+        if not target_tag_ids:
+            print("No valid tag IDs found from the provided input list. Exiting.")
+            return []
+        
+        print(f"Searching for resources associated with {len(target_tag_ids)} specified tags.")
+
+        # 3. List objects attached to ANY of these specific tag IDs
+        tag_association_svc = vsphere_client.tagging.TagAssociation
+        
+        # Use list_attached_objects_on_tags for efficiency with multiple tags
+        # This method returns a list of com.vmware.cis.tagging.TagAssociation.ObjectAttachedToTag
+        # Each item in the list represents an object and the tags from the input list that are attached to it.
+        attached_objects_info = tag_association_svc.list_attached_objects_on_tags(list(target_tag_ids))
+        
+        if not attached_objects_info:
+            print("No resources found with any of the specified tags.")
+            return []
+
+        # 4. Process results and retrieve VM details, avoiding duplicates
+        # Use a dictionary to store unique VMs by their ID
+        unique_vms_found = {}
+        vm_svc = vsphere_client.vcenter.VM
+        all_vms = vm_svc.list()
+        vm_id_to_name_map = {vm.vm: vm.name for vm in all_vms}
+
+        for obj_info in attached_objects_info:
+            obj_id = obj_info.object_id.id
+            obj_type = obj_info.object_id.type
+            
+            # Filter for Virtual Machines (or other types as needed)
+            if obj_type == 'VirtualMachine':
+                vm_name = vm_id_to_name_map.get(obj_id)
+                if vm_name:
+                    if obj_id not in unique_vms_found:
+                        unique_vms_found[obj_id] = {
+                            'name': vm_name,
+                            'id': obj_id,
+                            'type': obj_type,
+                            'matching_tags': []
+                        }
+                    
+                    # Add all matching tags for this VM from the input list
+                    for tag_id_matched in obj_info.tag_ids:
+                        full_tag_name = tag_id_to_full_name.get(tag_id_matched)
+                        if full_tag_name and full_tag_name not in unique_vms_found[obj_id]['matching_tags']:
+                            unique_vms_found[obj_id]['matching_tags'].append(full_tag_name)
+                else:
+                    print(f"Warning: Could not find details for VM ID: {obj_id}")
+
+        return list(unique_vms_found.values())
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return []
+
+# --- Configuration ---
+VCENTER_HOST = "your_vcenter_ip_or_fqdn" # 👈 Replace with your vCenter IP or FQDN
+VCENTER_USERNAME = "your_vcenter_username" # 👈 Replace with your vCenter username
+VCENTER_PASSWORD = "your_vcenter_password" # 👈 Replace with your vCenter password
+DISABLE_SSL_VERIFICATION = True # 👈 Set to False for production environments with valid SSL certificates
+
+# --- Inputs for Tag Names and Categories (as a list of dictionaries) ---
+TARGET_TAG_CATEGORY_PAIRS = [ # 👈 Customize this list
+    {'tag_name': 'WebTier', 'category_name': 'Application'},
+    {'tag_name': 'Database', 'category_name': 'Application'},
+    {'tag_name': 'Production', 'category_name': 'Environment'},
+    {'tag_name': 'Linux', 'category_name': 'OS'}
+]
+
+# --- Run the script ---
+if __name__ == "__main__":
+    
+    print(f"\nSearching for resources with any of the following tag/category combinations:")
+    for pair in TARGET_TAG_CATEGORY_PAIRS:
+        print(f"  - Tag: '{pair['tag_name']}', Category: '{pair['category_name']}'")
+
+    resources_found = get_resources_with_multiple_tags(
+        VCENTER_HOST,
+        VCENTER_USERNAME,
+        VCENTER_PASSWORD,
+        TARGET_TAG_CATEGORY_PAIRS,
+        DISABLE_SSL_VERIFICATION
+    )
+
+    if resources_found:
+        print("\n--- Resources Found ---")
+        for resource in resources_found:
+            print(f"Name: {resource['name']}")
+            print(f"  ID: {resource['id']}")
+            print(f"  Type: {resource['type']}")
+            if resource['matching_tags']:
+                print(f"  Matching Tags: {', '.join(resource['matching_tags'])}")
+            print("-" * 30)
+    else:
+        print("No resources found matching the specified tags and categories, or an error occurred.")
+```
+
 ```py
 from pyVim.connect import SmartConnect, Disconnect
 from pyVmomi import vim
