@@ -9,6 +9,203 @@ VCENTER_HOST = "your_vcenter_ip_or_hostname"
 VCENTER_USER = "your_vcenter_username"
 VCENTER_PASSWORD = "your_vcenter_password"
 
+# The name of the cluster you want to get details for (from your image)
+TARGET_CLUSTER_NAME = "GB-WGDCLAB-CL04-TL-HP-SANDPIT"
+
+# --- Helper Functions ---
+
+def get_obj_by_name(content, vimtype, name):
+    """
+    Helper to find a Managed Object by its type and name.
+    """
+    obj = None
+    container = content.viewManager.CreateContainerView(
+        content.rootFolder, [vimtype], True
+    )
+    for c in container.view:
+        if c.name == name:
+            obj = c
+            break
+    container.Destroy()
+    return obj
+
+def convert_bytes_to_gb(bytes_value):
+    """
+    Converts bytes to gigabytes.
+    """
+    if bytes_value is None:
+        return 0
+    return bytes_value / (1024**3)
+
+def convert_bytes_to_mb(bytes_value):
+    """
+    Converts bytes to megabytes.
+    """
+    if bytes_value is None:
+        return 0
+    return bytes_value / (1024**2)
+
+# --- Main Script ---
+
+def main():
+    # Disable SSL certificate verification (for lab environments, use with caution in production)
+    s_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    s_context.check_hostname = False
+    s_context.verify_mode = ssl.CERT_NONE
+
+    si = None
+    try:
+        si = SmartConnect(
+            host=VCENTER_HOST,
+            user=VCENTER_USER,
+            pwd=VCENTER_PASSWORD,
+            sslContext=s_context
+        )
+        atexit.register(Disconnect, si)
+
+        content = si.RetrieveContent()
+
+        print(f"Connecting to vCenter: {VCENTER_HOST}\n")
+        print(f"Searching for cluster: '{TARGET_CLUSTER_NAME}'")
+
+        cluster = get_obj_by_name(content, vim.ClusterComputeResource, TARGET_CLUSTER_NAME)
+
+        if cluster:
+            print(f"\n--- Cluster: {cluster.name} (MoRef ID: {cluster._moId}) ---")
+
+            # Get Cluster Capacity and Usage
+            # ClusterComputeResource has a 'summary' property for aggregated data
+            cluster_summary = cluster.summary
+            cluster_quick_stats = cluster_summary.quickStats
+            cluster_total_cpu_mhz = cluster_summary.totalCpu
+            cluster_total_mem_mb = cluster_summary.totalMemory / (1024 * 1024) # Convert bytes to MB
+
+            print("\n  Cluster Capacity and Usage:")
+            print("    CPU:")
+            print(f"      Total Capacity: {cluster_total_cpu_mhz:.2f} MHz")
+            print(f"      Current Usage: {cluster_quick_stats.overallCpuUsage:.2f} MHz")
+            cpu_usage_percent = (cluster_quick_stats.overallCpuUsage / cluster_total_cpu_mhz) * 100 if cluster_total_cpu_mhz > 0 else 0
+            print(f"      Usage Percentage: {cpu_usage_percent:.2f}%")
+
+            print("    Memory:")
+            print(f"      Total Capacity: {cluster_total_mem_mb:.2f} MB")
+            print(f"      Current Usage: {cluster_quick_stats.overallMemoryUsage:.2f} MB")
+            mem_usage_percent = (cluster_quick_stats.overallMemoryUsage / cluster_total_mem_mb) * 100 if cluster_total_mem_mb > 0 else 0
+            print(f"      Usage Percentage: {mem_usage_percent:.2f}%")
+
+            # For Storage, we need to aggregate from datastores attached to the cluster
+            total_storage_capacity_gb = 0
+            total_storage_free_gb = 0
+            total_storage_provisioned_gb = 0 # This represents provisioned space across all VMs
+            total_storage_used_gb = 0 # This is actual used space on datastores
+
+            for datastore in cluster.datastore:
+                ds_summary = datastore.summary
+                total_storage_capacity_gb += convert_bytes_to_gb(ds_summary.capacity)
+                total_storage_free_gb += convert_bytes_to_gb(ds_summary.freeSpace)
+                # For provisioned space, you typically sum up the committed and uncommitted space of all VMs
+                # The 'uncommitted' property on datastore summary is for thin-provisioned space that's not yet consumed
+                # A more precise way would be to sum disk sizes of all VMs on this datastore.
+                # For simplicity here, we'll calculate used as capacity - free.
+                total_storage_used_gb += convert_bytes_to_gb(ds_summary.capacity - ds_summary.freeSpace)
+
+                # If you want to show provisioned based on summary:
+                # If the datastore summary has 'uncommitted' (e.g., vSAN, thin provisioned storage pool)
+                if hasattr(ds_summary, 'uncommitted'):
+                    # Provisioned is often capacity - free + uncommitted, representing potential full usage
+                    total_storage_provisioned_gb += convert_bytes_to_gb(ds_summary.capacity - ds_summary.freeSpace + ds_summary.uncommitted)
+                else:
+                    # For thick provisioning, provisioned is effectively used (capacity - free)
+                    total_storage_provisioned_gb += convert_bytes_to_gb(ds_summary.capacity - ds_summary.freeSpace)
+
+
+            storage_usage_percent = (total_storage_used_gb / total_storage_capacity_gb) * 100 if total_storage_capacity_gb > 0 else 0
+
+            print("    Storage (Aggregated from shared Datastores):")
+            print(f"      Total Capacity: {total_storage_capacity_gb:.2f} GB")
+            print(f"      Used: {total_storage_used_gb:.2f} GB")
+            print(f"      Free: {total_storage_free_gb:.2f} GB")
+            print(f"      Usage Percentage: {storage_usage_percent:.2f}%")
+            print(f"      Provisioned: {total_storage_provisioned_gb:.2f} GB (may exceed capacity with thin provisioning)")
+
+
+            # Get Host Capacity and Usage for each host in the cluster
+            print("\n  --- Individual Host Details within the Cluster ---")
+            if not cluster.host:
+                print("    No hosts found in this cluster.")
+            else:
+                for host in cluster.host:
+                    print(f"\n    Host: {host.name} (MoRef ID: {host._moId})")
+
+                    host_summary = host.summary
+                    host_hardware = host.hardware
+                    host_quick_stats = host_summary.quickStats
+
+                    # CPU
+                    host_cpu_capacity_mhz = host_hardware.cpuInfo.numCpuCores * host_hardware.cpuInfo.hz / 1000000
+                    host_cpu_usage_mhz = host_quick_stats.overallCpuUsage
+                    host_cpu_usage_percent = (host_cpu_usage_mhz / host_cpu_capacity_mhz) * 100 if host_cpu_capacity_mhz > 0 else 0
+
+                    print("      CPU:")
+                    print(f"        Total Capacity: {host_cpu_capacity_mhz:.2f} MHz")
+                    print(f"        Current Usage: {host_cpu_usage_mhz:.2f} MHz")
+                    print(f"        Usage Percentage: {host_cpu_usage_percent:.2f}%")
+
+                    # Memory
+                    host_mem_capacity_mb = host_hardware.memorySize / (1024 * 1024) # Convert bytes to MB
+                    host_mem_usage_mb = host_quick_stats.overallMemoryUsage
+                    host_mem_usage_percent = (host_mem_usage_mb / host_mem_capacity_mb) * 100 if host_mem_capacity_mb > 0 else 0
+
+                    print("      Memory:")
+                    print(f"        Total Capacity: {host_mem_capacity_mb:.2f} MB")
+                    print(f"        Current Usage: {host_mem_usage_mb:.2f} MB")
+                    print(f"        Usage Percentage: {host_mem_usage_percent:.2f}%")
+
+                    # Storage for Host (Local Datastores + shared datastores accessible by this host)
+                    host_total_storage_capacity_gb = 0
+                    host_total_storage_free_gb = 0
+                    host_total_storage_used_gb = 0
+
+                    for ds in host.datastore:
+                        ds_summary = ds.summary
+                        host_total_storage_capacity_gb += convert_bytes_to_gb(ds_summary.capacity)
+                        host_total_storage_free_gb += convert_bytes_to_gb(ds_summary.freeSpace)
+                        host_total_storage_used_gb += convert_bytes_to_gb(ds_summary.capacity - ds_summary.freeSpace)
+
+                    host_storage_usage_percent = (host_total_storage_used_gb / host_total_storage_capacity_gb) * 100 if host_total_storage_capacity_gb > 0 else 0
+
+                    print("      Storage (Accessible Datastores):")
+                    print(f"        Total Capacity: {host_total_storage_capacity_gb:.2f} GB")
+                    print(f"        Used: {host_total_storage_used_gb:.2f} GB")
+                    print(f"        Free: {host_total_storage_free_gb:.2f} GB")
+                    print(f"        Usage Percentage: {host_storage_usage_percent:.2f}%")
+
+        else:
+            print(f"Cluster '{TARGET_CLUSTER_NAME}' not found.")
+
+    except vim.fault.InvalidLogin as e:
+        print(f"Authentication error: {e.msg}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        if si:
+            Disconnect(si)
+
+if __name__ == "__main__":
+    main()
+```
+
+```py
+from pyVim.connect import SmartConnect, Disconnect
+from pyVmomi import vim
+import ssl
+import atexit
+
+# --- Configuration ---
+VCENTER_HOST = "your_vcenter_ip_or_hostname"
+VCENTER_USER = "your_vcenter_username"
+VCENTER_PASSWORD = "your_vcenter_password"
+
 # The name of the datastore you want to check (from your image)
 TARGET_DATASTORE_NAME = "GB-WGDCLAB-CL04-TL-HP-SANDPIT-DS"
 
