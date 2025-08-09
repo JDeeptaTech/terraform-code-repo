@@ -1,3 +1,33 @@
+```py
+def find_max_closest(numbers, target):
+  """
+  Finds the closest number in a list to a target.
+  In case of a tie, it returns the larger number.
+
+  Args:
+    numbers: A list of numbers.
+    target: The target number.
+
+  Returns:
+    The number in the list that is closest to the target,
+    preferring the maximum in a tie.
+  """
+  return min(numbers, key=lambda x: (abs(x - target), -x))
+
+# Your list of numbers
+my_list = [8, 16, 18, 20]
+target_number = 24
+
+# Find the closest number, getting the max in a tie
+closest_number = find_max_closest(my_list, target_number)
+
+
+# Print the result
+print(f"The list of numbers is: {my_list}")
+print(f"The target number is: {target_number}")
+print(f"The max closest number is: {closest_number}")
+```
+
 ``` py
 import ssl
 from vmware.vapi.lib.connect import get_requests_connector
