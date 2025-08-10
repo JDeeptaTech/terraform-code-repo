@@ -1,4 +1,81 @@
 ```yaml
+# How many in parallel
+- set_fact:
+    subnet_batches: "{{ all_networks_with_cluster | batch(5) | list }}"
+    max_async_secs: 180
+    poll_delay: 1
+    poll_retries: 240        # 240 * 1s = 4 minutes max poll per batch
+    per_item_retries: 3
+    per_item_delay: 2
+
+- name: Process subnets in batches of 5 (parallel, with retry)
+  vars:
+    current_batch: "{{ batch }}"
+  block:
+
+    # Launch 5 in parallel
+    - name: Start requests for this batch
+      uri:
+        url: "{{ qip_prod_api }}/api/v1/{{ qip_group_name }}/v4subnet.json?address={{ item.subnet }}"
+        method: GET
+        headers:
+          Content-Type: application/json
+          Authentication: "Token {{ qip_login_response.authentication }}"
+        return_content: yes
+        validate_certs: no
+      loop: "{{ current_batch }}"
+      async: "{{ max_async_secs }}"
+      poll: 0
+      register: batch_jobs
+
+    # Wait for completion
+    - name: Wait for this batch to finish
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: batch_results
+      until: batch_results.finished
+      retries: "{{ poll_retries }}"
+      delay: "{{ poll_delay }}"
+      loop: "{{ batch_jobs.results }}"
+
+    # Pick out the items that failed or returned non-200 and retry them
+    - name: Retry failed/non-200 items (up to N times, sequentially)
+      uri:
+        url: "{{ qip_prod_api }}/api/v1/{{ qip_group_name }}/v4subnet.json?address={{ item.subnet }}"
+        method: GET
+        headers:
+          Content-Type: application/json
+          Authentication: "Token {{ qip_login_response.authentication }}"
+        return_content: yes
+        validate_certs: no
+        status_code: 200
+      loop: >-
+        {{
+          (
+            batch_results.results
+            | selectattr('failed','defined') | selectattr('failed')
+            | map(attribute='item')
+          )
+          +
+          (
+            batch_results.results
+            | selectattr('result.status','defined')
+            | rejectattr('result.status','equalto', 200)
+            | map(attribute='item')
+          )
+        }}
+      retries: "{{ per_item_retries }}"
+      delay: "{{ per_item_delay }}"
+      register: retry_results
+      when: batch_results is defined
+
+  loop: "{{ subnet_batches }}"
+  loop_control:
+    loop_var: batch
+
+```
+
+```yaml
 # -------- Tunables --------
 - set_fact:
     parallelism: 5                 # how many in parallel at a time
