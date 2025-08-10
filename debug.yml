@@ -1,3 +1,142 @@
+```yaml
+# -------- Tunables --------
+- set_fact:
+    parallelism: 5                 # how many in parallel at a time
+    async_timeout: 180             # secs allowed per request
+    poll_delay: 1                  # secs between polls
+    poll_retries: 240              # 240 * 1s = 4 minutes max per batch
+    retry_rounds: 2                # how many retry waves (parallel) for failures
+    expect_status: 200
+
+# Split the full work into batches of N
+- set_fact:
+    subnet_batches: "{{ all_networks_with_cluster | batch(parallelism) | list }}"
+
+# ---------- First pass ----------
+- name: Launch first-pass requests (parallel per batch)
+  vars:
+    current_batch: "{{ batch }}"
+  block:
+
+    - name: Start requests for this batch
+      ansible.builtin.uri:
+        url: "{{ qip_prod_api }}/api/v1/{{ qip_group_name }}/v4subnet.json?address={{ item.subnet }}"
+        method: GET
+        headers:
+          Content-Type: application/json
+          Authentication: "Token {{ qip_login_response.authentication }}"
+        return_content: yes
+        validate_certs: no
+      loop: "{{ current_batch }}"
+      async: "{{ async_timeout }}"
+      poll: 0
+      register: batch_jobs
+
+    - name: Wait for this batch to finish
+      ansible.builtin.async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: batch_results
+      until: batch_results.finished
+      retries: "{{ poll_retries }}"
+      delay: "{{ poll_delay }}"
+      loop: "{{ batch_jobs.results }}"
+
+    - name: Collect failed and non-{{ expect_status }} items from this batch
+      ansible.builtin.set_fact:
+        retry_items: >-
+          {{
+            (
+              (retry_items | default([]))
+              +
+              (
+                batch_results.results
+                | selectattr('failed','defined') | selectattr('failed')
+                | map(attribute='item') | list
+              )
+              +
+              (
+                batch_results.results
+                | selectattr('result.status','defined')
+                | rejectattr('result.status','equalto', expect_status)
+                | map(attribute='item') | list
+              )
+            ) | unique
+          }}
+
+  loop: "{{ subnet_batches }}"
+  loop_control:
+    loop_var: batch
+
+# ---------- Retry rounds (parallel in batches) ----------
+- name: Retry failures in parallel batches (round {{ round + 1 }} of {{ retry_rounds }})
+  when: (retry_items | default([])) | length > 0
+  vars:
+    retry_batches: "{{ retry_items | batch(parallelism) | list }}"
+  block:
+
+    - name: Start retry requests for this round
+      ansible.builtin.uri:
+        url: "{{ qip_prod_api }}/api/v1/{{ qip_group_name }}/v4subnet.json?address={{ item.subnet }}"
+        method: GET
+        headers:
+          Content-Type: application/json
+          Authentication: "Token {{ qip_login_response.authentication }}"
+        return_content: yes
+        validate_certs: no
+      loop: "{{ retry_batch }}"
+      async: "{{ async_timeout }}"
+      poll: 0
+      register: retry_jobs
+      loop_control:
+        loop_var: retry_batch
+      with_items: "{{ retry_batches }}"
+      loop_control: { }  # (quiet VSCode warnings)
+
+    - name: Flatten job handles
+      ansible.builtin.set_fact:
+        retry_job_handles: "{{ (retry_job_handles | default([])) + item.results }}"
+      loop: "{{ retry_jobs.results }}"
+
+    - name: Wait for retry jobs to finish
+      ansible.builtin.async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: retry_wait
+      until: retry_wait.finished
+      retries: "{{ poll_retries }}"
+      delay: "{{ poll_delay }}"
+      loop: "{{ retry_job_handles }}"
+
+    - name: Build next-round retry list (only items still failing)
+      ansible.builtin.set_fact:
+        retry_items: >-
+          {{
+            (
+              (retry_wait.results
+               | selectattr('failed','defined') | selectattr('failed')
+               | map(attribute='item') | list)
+              +
+              (
+                retry_wait.results
+                | selectattr('result.status','defined')
+                | rejectattr('result.status','equalto', expect_status)
+                | map(attribute='item') | list
+              )
+            ) | unique
+          }}
+  loop: "{{ range(0, retry_rounds) | list }}"
+  loop_control:
+    loop_var: round
+
+# ---------- Final report ----------
+- name: Show any items still failing after retries
+  ansible.builtin.debug:
+    msg: >
+      Still failing after {{ retry_rounds }} retry rounds:
+      {{ (retry_items | default([])) | map(attribute='subnet') | list }}
+  when: (retry_items | default([])) | length > 0
+
+```
+
 ```py
 from typing import Literal, Union, Dict, Any
 from fastapi import FastAPI, HTTPException, status, Depends, Header
