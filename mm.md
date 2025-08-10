@@ -1,5 +1,360 @@
 
-https://chatgpt.com/share/6898a002-b828-8004-8a2e-0b324790858d
+```text
+
+Project layout
+Copy
+Edit
+project/
+├── ansible.cfg
+├── callback_plugins/
+│   └── task_logger.py
+├── playbook.yml
+└── inventory.ini
+1) The callback plugin (callback_plugins/task_logger.py)
+python
+Copy
+Edit
+# callback_plugins/task_logger.py
+# -*- coding: utf-8 -*-
+
+from __future__ import annotations
+import os
+import io
+import re
+import json
+import time
+from datetime import datetime
+from ansible.plugins.callback import CallbackBase
+
+DOCUMENTATION = r"""
+callback: task_logger
+type: notification
+short_description: Log selected task events to a JSONL file
+description:
+  - Logs task start/ok/changed/failed/skipped/unreachable with filtering by tag, module, or task name regex.
+  - Output is JSON Lines (one JSON object per line).
+options:
+  log_path:
+    description: File path for the JSONL log.
+    ini:
+      - section: callback_task_logger
+        key: log_path
+    env:
+      - name: TASK_LOGGER_LOG_PATH
+    default: ./logs/ansible_tasks.jsonl
+  include_tags:
+    description: Comma-separated list of tags to include. If empty, do not filter by tag.
+    ini:
+      - section: callback_task_logger
+        key: include_tags
+    env:
+      - name: TASK_LOGGER_INCLUDE_TAGS
+    default: ""
+  include_modules:
+    description: Comma-separated list of module names to include (e.g., copy,template,shell).
+    ini:
+      - section: callback_task_logger
+        key: include_modules
+    env:
+      - name: TASK_LOGGER_INCLUDE_MODULES
+    default: ""
+  include_names_regex:
+    description: Regex to include tasks by their name. If empty, do not filter by name.
+    ini:
+      - section: callback_task_logger
+        key: include_names_regex
+    env:
+      - name: TASK_LOGGER_INCLUDE_NAMES_REGEX
+    default: ""
+  only_changed:
+    description: If true, only log events where changed is true or status is failed/unreachable.
+    type: bool
+    ini:
+      - section: callback_task_logger
+        key: only_changed
+    env:
+      - name: TASK_LOGGER_ONLY_CHANGED
+    default: False
+  redact_vars:
+    description: Comma-separated list of keys to redact from result/args (e.g., password,token).
+    ini:
+      - section: callback_task_logger
+        key: redact_vars
+    env:
+      - name: TASK_LOGGER_REDACT_VARS
+    default: "password,passwd,token,secret,apikey,api_key"
+"""
+
+CALLBACK_VERSION = 2.0
+CALLBACK_TYPE = "notification"
+CALLBACK_NAME = "task_logger"  # enable via callbacks_enabled=task_logger
+
+class CallbackModule(CallbackBase):
+    """
+    Custom callback to log selected task events as JSON lines.
+    """
+
+    def __init__(self):
+        super(CallbackModule, self).__init__()
+        self._log_path = None
+        self._include_tags = set()
+        self._include_modules = set()
+        self._name_pattern = None
+        self._only_changed = False
+        self._redact_keys = set()
+        self._task_start_times = {}  # (host, task_uuid) -> start_time
+
+        # ensure directory if default path is used and doesn't exist yet
+        # actual path is resolved in set_options
+        self._fp = None
+
+    def set_options(self, task_keys=None, var_options=None, direct=None):
+        super(CallbackModule, self).set_options(task_keys=task_keys, var_options=var_options, direct=direct)
+
+        self._log_path = self.get_option("log_path")
+        include_tags = self.get_option("include_tags") or ""
+        include_modules = self.get_option("include_modules") or ""
+        name_regex = self.get_option("include_names_regex") or ""
+        self._only_changed = bool(self.get_option("only_changed"))
+        redact_vars = self.get_option("redact_vars") or ""
+
+        self._include_tags = set(t.strip() for t in include_tags.split(",") if t.strip())
+        self._include_modules = set(m.strip() for m in include_modules.split(",") if m.strip())
+        self._name_pattern = re.compile(name_regex) if name_regex else None
+        self._redact_keys = set(k.strip().lower() for k in redact_vars.split(",") if k.strip())
+
+        # open file handle
+        log_dir = os.path.dirname(os.path.abspath(self._log_path)) or "."
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir, exist_ok=True)
+        # buffered text writer with utf-8
+        self._fp = io.open(self._log_path, "a", encoding="utf-8", buffering=1)
+
+    def _should_log_task(self, task, result=None, status=None) -> bool:
+        """
+        Decide whether to log based on tag/module/name regex and only_changed flag.
+        """
+        # tags
+        if self._include_tags:
+            task_tags = set(getattr(task, "tags", []) or [])
+            if not (task_tags & self._include_tags):
+                return False
+
+        # module/action
+        if self._include_modules:
+            action = getattr(task, "action", None) or getattr(task, "_action", "")
+            if action not in self._include_modules:
+                return False
+
+        # name regex
+        if self._name_pattern:
+            name = getattr(task, "name", "") or task.get_name().strip()
+            if not self._name_pattern.search(name):
+                return False
+
+        # only_changed option (still log failures/unreachable)
+        if self._only_changed and result is not None and status in ("ok", "skipped"):
+            r = getattr(result, "_result", {}) or {}
+            changed = bool(r.get("changed", False))
+            if not changed:
+                return False
+
+        return True
+
+    def _redact(self, obj):
+        # recursively redact specified keys
+        if isinstance(obj, dict):
+            out = {}
+            for k, v in obj.items():
+                if k.lower() in self._redact_keys:
+                    out[k] = "***REDACTED***"
+                else:
+                    out[k] = self._redact(v)
+            return out
+        elif isinstance(obj, list):
+            return [self._redact(v) for v in obj]
+        return obj
+
+    def _write_event(self, payload: dict):
+        payload["@timestamp"] = datetime.utcnow().isoformat(timespec="milliseconds") + "Z"
+        self._fp.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+    # ---- Task lifecycle ----
+
+    def v2_playbook_on_task_start(self, task, is_conditional):
+        if not self._should_log_task(task):
+            return
+        # mark task start for duration metrics per host later
+        for host in getattr(task, "_play", {}).get_hosts() if hasattr(task, "_play") else []:
+            key = (str(host), task._uuid)
+            self._task_start_times[key] = time.time()
+
+        self._write_event({
+            "event": "task_start",
+            "play": getattr(getattr(task, "_block", None), "_play", None).get_name() if hasattr(getattr(task, "_block", None), "_play") else None,
+            "task_name": task.get_name().strip(),
+            "task_uuid": task._uuid,
+            "action": getattr(task, "action", None) or getattr(task, "_action", ""),
+            "tags": list(getattr(task, "tags", []) or []),
+            "is_conditional": bool(is_conditional),
+            "path": getattr(task, "get_path", lambda: None)(),
+        })
+
+    def _on_any_result(self, result, status: str):
+        task = result._task
+        if not self._should_log_task(task, result=result, status=status):
+            return
+
+        host = result._host.get_name()
+        key = (host, task._uuid)
+        start_t = self._task_start_times.pop(key, None)
+        duration_ms = int((time.time() - start_t) * 1000) if start_t else None
+
+        r = getattr(result, "_result", {}) or {}
+        payload = {
+            "event": "task_result",
+            "status": status,  # ok/changed/failed/skipped/unreachable
+            "changed": bool(r.get("changed", False)),
+            "host": host,
+            "play": getattr(getattr(task, "_block", None), "_play", None).get_name() if hasattr(getattr(task, "_block", None), "_play") else None,
+            "task_name": task.get_name().strip(),
+            "task_uuid": task._uuid,
+            "action": getattr(task, "action", None) or getattr(task, "_action", ""),
+            "tags": list(getattr(task, "tags", []) or []),
+            "path": getattr(task, "get_path", lambda: None)(),
+            "duration_ms": duration_ms,
+            # safe subset of fields commonly useful
+            "rc": r.get("rc"),
+            "stdout": r.get("stdout"),
+            "stderr": r.get("stderr"),
+            "msg": r.get("msg"),
+            "invocation": self._redact((r.get("invocation") or {}).get("module_args", {})),
+        }
+
+        # redact entire result (optional, here we keep a minimal 'result' field)
+        minimal = {k: v for k, v in r.items() if k in ("rc", "stdout", "stderr", "msg", "changed", "failed")}
+        payload["result"] = self._redact(minimal)
+
+        self._write_event(payload)
+
+    def v2_runner_on_ok(self, result):
+        self._on_any_result(result, status="changed" if result._result.get("changed") else "ok")
+
+    def v2_runner_on_failed(self, result, ignore_errors=False):
+        self._on_any_result(result, status="failed")
+
+    def v2_runner_on_unreachable(self, result):
+        self._on_any_result(result, status="unreachable")
+
+    def v2_runner_on_skipped(self, result):
+        self._on_any_result(result, status="skipped")
+
+    def __del__(self):
+        try:
+            if self._fp:
+                self._fp.close()
+        except Exception:
+            pass
+What it captures
+
+task_start events and task_result events with status (ok/changed/failed/skipped/unreachable), host, duration_ms, rc/stdout/stderr/msg, module args (redacted), tags, task path, etc.
+
+How it filters
+
+include_tags, include_modules, include_names_regex
+
+only_changed=true to keep the log signal-heavy
+
+2) Enable the plugin (ansible.cfg)
+ini
+Copy
+Edit
+[defaults]
+# Where Ansible should look for your custom callbacks
+callback_plugins = ./callback_plugins
+
+# Enable this callback (space/comma separated if enabling multiple)
+callbacks_enabled = task_logger
+
+# (For older Ansible) the old name is:
+# callback_whitelist = task_logger
+
+[callback_task_logger]
+# Plugin options
+log_path = ./logs/tasks.jsonl
+include_tags = deploy,db
+include_modules = shell,command,template,copy
+include_names_regex = .*
+only_changed = False
+redact_vars = password,passwd,token,secret,apikey,api_key
+Tip: You can override any of these with environment variables like TASK_LOGGER_LOG_PATH=/tmp/x.jsonl.
+
+3) Minimal example (playbook.yml)
+yaml
+Copy
+Edit
+- name: Demo play
+  hosts: all
+  gather_facts: false
+
+  tasks:
+    - name: Template a config (logged if tag matches)
+      ansible.builtin.template:
+        src: config.j2
+        dest: /tmp/config.conf
+      tags: ["deploy"]
+
+    - name: Run a health check (logged if module/tag matches)
+      ansible.builtin.shell: "echo healthy && exit 0"
+      register: health
+      tags: ["db"]
+
+    - name: This task will be ignored by the logger if it doesn't match filters
+      ansible.builtin.debug:
+        msg: "Noise"
+      tags: ["misc"]
+inventory.ini (example):
+
+ini
+Copy
+Edit
+[all]
+localhost ansible_connection=local
+Run:
+
+bash
+Copy
+Edit
+ansible-playbook -i inventory.ini playbook.yml
+You’ll get ./logs/tasks.jsonl with entries like:
+
+json
+Copy
+Edit
+{"@timestamp":"2025-08-10T13:05:21.123Z","event":"task_start","task_name":"Template a config", ...}
+{"@timestamp":"2025-08-10T13:05:21.567Z","event":"task_result","status":"changed","host":"localhost","action":"template","duration_ms":142,"rc":0,...}
+{"@timestamp":"2025-08-10T13:05:21.890Z","event":"task_result","status":"ok","host":"localhost","action":"shell","stdout":"healthy\n",...}
+Variations & enhancements
+Ship to HTTP: replace _write_event to POST to an internal log collector.
+
+Size rotation: before append, check file size and rotate (e.g., rename with timestamp).
+
+Per-run correlation: add a run_id env var (TASK_LOGGER_RUN_ID) and include in each event.
+
+Performance: buffer to memory and flush every N events; or use a background thread (but keep it simple first).
+
+When a different approach is better
+You need to transform/validate inputs before module execution: consider an action plugin (intercepts module invocation).
+
+One task’s output should feed an external system immediately and only for that task: a custom module might be simpler.
+
+Reactive automation from Ansible events: consider EDA (Event-Driven Ansible) with the controller or rulebooks.
+
+For generic, audit-style, cross-play logging, the callback plugin above is the sweet spot.
+
+If you tell me your exact filters (tags/modules/task name patterns) and where you want the data to go (file, HTTP, syslog, ELK), I can tailor the plugin snippet to your setup.
+```
+
 ```py
 def find_max_closest(numbers, target):
   """
