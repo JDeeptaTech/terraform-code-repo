@@ -234,3 +234,239 @@ class CallbackModule(CallbackBase):
             pass
 
 ```
+## 2
+
+```py
+# -*- coding: utf-8 -*-
+from __future__ import annotations
+import io, os, re, shlex, json, time, ssl
+from datetime import datetime
+from ansible.plugins.callback import CallbackBase
+try:
+    import urllib.request as urlreq
+except Exception:  # pragma: no cover
+    urlreq = None
+
+DOCUMENTATION = r"""
+callback: task_logger
+type: notification
+short_description: Send selected Ansible task results to Splunk HEC
+description:
+  - Sends a HEC event for any task whose name contains the marker C(| addtolog |).
+  - Optional inline overrides may follow the marker as key=value pairs
+    (e.g. C(| addtolog | index=my_idx sourcetype=my_type source=my_src)).
+  - Defaults for index, sourcetype, and source can be set in ansible.cfg or env vars.
+options:
+  endpoint:
+    description: Splunk HEC endpoint (event API).
+    env: [{name: SPLUNK_HEC_ENDPOINT}]
+    ini: [{section: callback_task_logger, key: endpoint}]
+    required: true
+  token:
+    description: Splunk HEC token.
+    env: [{name: SPLUNK_HEC_TOKEN}]
+    ini: [{section: callback_task_logger, key: token}]
+    required: true
+  index:
+    description: Default Splunk index (can be overridden per task).
+    env: [{name: SPLUNK_HEC_INDEX}]
+    ini: [{section: callback_task_logger, key: index}]
+    required: true
+  sourcetype:
+    description: Default Splunk sourcetype (can be overridden per task).
+    env: [{name: SPLUNK_HEC_SOURCETYPE}]
+    ini: [{section: callback_task_logger, key: sourcetype}]
+    required: true
+  source:
+    description: Default Splunk source (can be overridden per task).
+    env: [{name: SPLUNK_HEC_SOURCE}]
+    ini: [{section: callback_task_logger, key: source}]
+    default: ansible:callback
+  validate_certs:
+    description: Validate TLS certs when posting to HEC.
+    type: bool
+    env: [{name: SPLUNK_HEC_VALIDATE_CERTS}]
+    ini: [{section: callback_task_logger, key: validate_certs}]
+    default: true
+  log_path:
+    description: Optional local JSONL file for debugging/auditing.
+    env: [{name: TASK_LOGGER_LOG_PATH}]
+    ini: [{section: callback_task_logger, key: log_path}]
+    default: ""
+"""
+
+CALLBACK_VERSION = 2.0
+CALLBACK_TYPE = "notification"
+CALLBACK_NAME = "task_logger"
+
+_MARKER = re.compile(r"^(?P<prefix>.*?)(?:\s*\|\s*addtolog\s*\|\s*(?P<kv>.*))?$", re.IGNORECASE)
+
+class CallbackModule(CallbackBase):
+    def __init__(self):
+        super().__init__()
+        self.endpoint = None
+        self.token = None
+        self.default_index = None
+        self.default_sourcetype = None
+        self.default_source = "ansible:callback"
+        self.validate_certs = True
+        self.fp = None  # optional JSONL writer
+
+    # ---- setup options from ansible.cfg / env ----
+    def set_options(self, task_keys=None, var_options=None, direct=None):
+        super().set_options(task_keys=task_keys, var_options=var_options, direct=direct)
+        self.endpoint = self.get_option("endpoint").rstrip("/")
+        self.token = self.get_option("token")
+        self.default_index = self.get_option("index")
+        self.default_sourcetype = self.get_option("sourcetype")
+        self.default_source = self.get_option("source") or "ansible:callback"
+        self.validate_certs = bool(self.get_option("validate_certs"))
+        log_path = (self.get_option("log_path") or "").strip()
+        if log_path:
+            os.makedirs(os.path.dirname(os.path.abspath(log_path)), exist_ok=True)
+            self.fp = io.open(log_path, "a", encoding="utf-8", buffering=1)
+
+    # ---- helpers ----
+    def _parse_marker(self, raw_name: str):
+        """
+        Returns (clean_task_name, overrides_dict or None).
+        overrides_dict is None when marker not present (means: do not send).
+        It is {} when marker present with no overrides.
+        """
+        m = _MARKER.match(raw_name or "")
+        if not m:
+            return raw_name, None
+        kv = m.group("kv")
+        if kv is None:  # no marker
+            return (m.group("prefix") or raw_name).strip(), None
+        overrides = {}
+        # parse "key=value" tokens; supports quotes
+        for tok in shlex.split(kv):
+            if "=" in tok:
+                k, v = tok.split("=", 1)
+                overrides[k.strip().lower()] = v.strip()
+        return (m.group("prefix") or "").strip(), overrides
+
+    def _local_log(self, obj: dict):
+        if self.fp:
+            self.fp.write(json.dumps(obj, ensure_ascii=False) + "\n")
+
+    def _send_hec(self, host: str, task_name: str, status: str, result: dict, overrides: dict):
+        index = overrides.get("index", self.default_index)
+        sourcetype = overrides.get("sourcetype", self.default_sourcetype)
+        source = overrides.get("source", self.default_source)
+
+        # Keep a compact result
+        safe = {k: result.get(k) for k in ("changed", "failed", "rc", "stdout", "stderr", "msg") if k in result}
+
+        payload = {
+            "time": time.time(),
+            "host": host,
+            "index": index,
+            "sourcetype": sourcetype,
+            "source": source,
+            "event": {
+                "@timestamp": datetime.utcnow().isoformat(timespec="milliseconds") + "Z",
+                "status": status,
+                "task_name": task_name,
+                "host": host,
+                "result": safe,
+            },
+        }
+
+        req = urlreq.Request(
+            url=self.endpoint,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json", "Authorization": f"Splunk {self.token}"},
+            method="POST",
+        )
+
+        ctx = None
+        if not self.validate_certs:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+        try:
+            with urlreq.urlopen(req, context=ctx):  # noqa: SIM115
+                pass
+        except Exception as e:  # don't break the play
+            self._local_log({"hec_error": str(e), "task_name": task_name, "status": status})
+
+    def _emit(self, event_type: str, result):
+        raw = result._task.get_name().strip()
+        clean_name, overrides = self._parse_marker(raw)
+        if overrides is None:
+            return  # no marker -> do nothing
+
+        host = result._host.get_name()
+        r = result._result or {}
+
+        # local optional audit line
+        self._local_log({
+            "@timestamp": datetime.utcnow().isoformat(timespec="milliseconds") + "Z",
+            "event": event_type,
+            "task_name": clean_name,
+            "host": host,
+            "result": {k: r.get(k) for k in ("changed","failed","rc","stdout","stderr","msg")},
+            "overrides": overrides,
+        })
+
+        self._send_hec(host, clean_name, event_type, r, overrides)
+
+    # ---- Ansible hooks ----
+    def v2_runner_on_ok(self, result):
+        self._emit("changed" if result._result.get("changed") else "ok", result)
+
+    def v2_runner_on_failed(self, result, ignore_errors=False):
+        self._emit("failed", result)
+
+    def v2_runner_on_unreachable(self, result):
+        self._emit("unreachable", result)
+
+    def v2_runner_on_skipped(self, result):
+        self._emit("skipped", result)
+
+    def __del__(self):
+        try:
+            if self.fp:
+                self.fp.close()
+        except Exception:
+            pass
+
+```
+
+
+``` cfg
+[defaults]
+callback_plugins = ./callback_plugins
+callbacks_enabled = task_logger
+
+[callback_task_logger]
+# Splunk HEC config (defaults; can be overridden per task)
+endpoint = https://splunk.example.com:8088/services/collector/event
+token = <YOUR_HEC_TOKEN>
+index = my_default_index
+sourcetype = ansible:task
+source = ansible:callback
+validate_certs = true
+
+# optional local JSONL for debugging
+log_path = ./logs/task_logger.jsonl
+
+```
+
+``` yml
+- hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Do build step | addtolog |
+      shell: "echo build"
+
+    - name: Create VM | addtolog | index=cto_virt_infra_hub sourcetype=ansible:vm source=vm-build
+      shell: "echo creating"
+
+    - name: This will NOT be sent to Splunk
+      debug: { msg: "no marker" }
+
+```
