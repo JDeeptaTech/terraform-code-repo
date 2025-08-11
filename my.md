@@ -1,3 +1,25 @@
+```cfg
+[defaults]
+callback_plugins = ./callback_plugins
+callbacks_enabled = task_logger
+
+[callback_task_logger]
+# filter
+name_regex = (?i)deploy|restart
+only_changed = False
+
+# optional local file (good for debugging)
+log_path = ./logs/task_logger.jsonl
+
+# Splunk HEC
+hec_endpoint = https://splunk.example.com:8088/services/collector/event
+hec_token = <YOUR_HEC_TOKEN>
+hec_index = my_ansible_index
+hec_sourcetype = ansible:task
+hec_source = ansible:callback
+validate_certs = True
+
+```
 ```py
 # -*- coding: utf-8 -*-
 from __future__ import annotations
