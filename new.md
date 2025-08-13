@@ -1,7 +1,5 @@
 ```py
-# -*- coding: utf-8 -*-
-
-# In callback_plugins/postgres_logger.py
+# In callback_plugins/postgres_vm_logger.py
 
 from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
@@ -9,183 +7,149 @@ __metaclass__ = type
 import os
 import datetime
 import json
+import getpass # To get the current username
+
 try:
     import psycopg2
+    from psycopg2.extras import Json
 except ImportError:
-    # Handle the case where the psycopg2 library is not installed
-    raise ImportError("The psycopg2 library is required for this callback. Please install it with 'pip install psycopg2-binary'")
+    raise ImportError("This callback requires the 'psycopg2-binary' library. Please install it with 'pip install psycopg2-binary'")
 
 from ansible.plugins.callback import CallbackBase
+from ansible.executor.task_queue_manager import TaskQueueManager
 
 DOCUMENTATION = r'''
-    callback: postgres_logger
-    short_description: Logs playbook start and end events to a PostgreSQL database.
+    callback: postgres_vm_logger
+    short_description: Logs the final status of each host in a play to a PostgreSQL `vm_table`.
     description:
-      - This callback plugin connects to a PostgreSQL database and logs an entry
-        when a playbook starts and updates that entry when the playbook finishes.
-      - It requires the `psycopg2-binary` library to be installed.
-      - Database connection details are configured via environment variables.
+        - This callback plugin connects to PostgreSQL and logs one record per host at the
+          conclusion of a playbook run. It assumes the target table already exists.
+        - It uses an "upsert" command (INSERT ON CONFLICT) to create or update records
+          based on the `vm_name`.
     requirements:
-      - whitelist in ansible.cfg
-      - psycopg2-binary python library
-    options:
-      table_name:
-        description: The name of the table to log to.
-        default: 'ansible_playbook_runs'
-        env:
-          - name: ANSIBLE_POSTGRES_TABLE
-        ini:
-          - section: callback_postgres_logger
-            key: table_name
+      - Add `postgres_vm_logger` to `callback_whitelist` in ansible.cfg.
+      - Set database connection details as environment variables.
 '''
 
 class CallbackModule(CallbackBase):
-    """
-    Logs playbook execution statistics to a PostgreSQL database.
-    """
     CALLBACK_VERSION = 2.0
     CALLBACK_TYPE = 'notification'
-    CALLBACK_NAME = 'postgres_logger'
+    CALLBACK_NAME = 'postgres_vm_logger'
     CALLBACK_NEEDS_WHITELIST = True
 
     def __init__(self):
         super(CallbackModule, self).__init__()
-        self.playbook_run_id = None
-        self.playbook_name = "N/A"
-
-        # --- Database Connection Details from Environment Variables ---
+        
+        # --- Database Connection Details (from environment variables for security) ---
         self.db_host = os.getenv('ANSIBLE_POSTGRES_HOST', 'localhost')
         self.db_port = os.getenv('ANSIBLE_POSTGRES_PORT', '5432')
         self.db_name = os.getenv('ANSIBLE_POSTGRES_DB', 'ansible_logs')
         self.db_user = os.getenv('ANSIBLE_POSTGRES_USER')
         self.db_password = os.getenv('ANSIBLE_POSTGRES_PASSWORD')
+        self.table_name = "vm_table"
+
+        self.playbook_vars = {}
         
-        # Check for required credentials
+        # Disable the plugin if credentials are not set
         if not self.db_user or not self.db_password:
-            self._display.warning("Postgres callback is disabled. Set ANSIBLE_POSTGRES_USER and ANSIBLE_POSTGRES_PASSWORD env vars.")
+            self._display.warning("Postgres VM Logger is disabled. Set ANSIBLE_POSTGRES_USER and ANSIBLE_POSTGRES_PASSWORD.")
             self.disabled = True
             return
 
-        # Attempt to connect to create the table if it doesn't exist
-        self._create_table_if_not_exists()
-
     def _get_db_connection(self):
-        """Establishes a connection to the PostgreSQL database."""
+        """Establishes and returns a database connection."""
         if self.disabled:
             return None
         try:
-            conn = psycopg2.connect(
+            return psycopg2.connect(
                 dbname=self.db_name,
                 user=self.db_user,
                 password=self.db_password,
                 host=self.db_host,
                 port=self.db_port
             )
-            return conn
         except Exception as e:
-            self._display.error(f"Could not connect to PostgreSQL database: {e}")
+            self._display.error(f"Postgres VM Logger: Could not connect to PostgreSQL database: {e}")
             self.disabled = True
             return None
 
-    def _create_table_if_not_exists(self):
-        """Creates the logging table if it's not already present."""
-        conn = self._get_db_connection()
-        if not conn:
-            return
-        
-        table_name = self.get_option('table_name')
-        create_table_sql = f"""
-        CREATE TABLE IF NOT EXISTS {table_name} (
-            id SERIAL PRIMARY KEY,
-            playbook_name VARCHAR(255) NOT NULL,
-            start_time TIMESTAMP WITH TIME ZONE NOT NULL,
-            end_time TIMESTAMP WITH TIME ZONE,
-            duration_seconds INTEGER,
-            status VARCHAR(50),
-            stats JSONB
-        );
-        """
-        try:
-            with conn.cursor() as cur:
-                cur.execute(create_table_sql)
-            conn.commit()
-        except Exception as e:
-            self._display.error(f"Failed to create table '{table_name}': {e}")
-            self.disabled = True
-        finally:
-            if conn:
-                conn.close()
-
     def v2_playbook_on_start(self, playbook):
-        """This method is called at the start of the playbook run."""
-        conn = self._get_db_connection()
-        if not conn:
-            return
-            
-        self.playbook_name = os.path.basename(playbook.get_path())
-        start_time = datetime.datetime.now(datetime.timezone.utc)
-
-        sql = f"INSERT INTO {self.get_option('table_name')} (playbook_name, start_time, status) VALUES (%s, %s, %s) RETURNING id;"
-        
-        try:
-            with conn.cursor() as cur:
-                cur.execute(sql, (self.playbook_name, start_time, 'in_progress'))
-                self.playbook_run_id = cur.fetchone()[0] # Get the ID of the new row
-            conn.commit()
-            self._display.v(f"Logged playbook start to PostgreSQL with run ID: {self.playbook_run_id}")
-        except Exception as e:
-            self._display.error(f"Failed to log playbook start: {e}")
-        finally:
-            if conn:
-                conn.close()
+        """Captures extra variables passed on the command line at the start of the play."""
+        if hasattr(playbook, '_loader'):
+             tqm = TaskQueueManager(
+                inventory=playbook._inventory,
+                variable_manager=playbook._variable_manager,
+                loader=playbook._loader,
+                passwords=None,
+             )
+             self.playbook_vars = tqm._variable_manager.get_vars(play=playbook)
+        else:
+             self.playbook_vars = playbook.extra_vars
 
     def v2_playbook_on_stats(self, stats):
-        """This method is called at the end of the playbook run."""
+        """This hook runs at the end of the playbook to log host statuses."""
         conn = self._get_db_connection()
-        if not conn or not self.playbook_run_id:
+        if not conn:
             return
 
-        end_time = datetime.datetime.now(datetime.timezone.utc)
-
-        # Summarize the host stats
-        hosts_summary = {}
-        total_hosts = 0
-        overall_status = 'success'
-
-        for host in stats.processed.keys():
-            host_stats = stats.summarize(host)
-            hosts_summary[host] = host_stats
-            if host_stats['unreachable'] > 0 or host_stats['failures'] > 0:
-                overall_status = 'failed'
-            total_hosts += 1
-
-        # Calculate duration
-        start_time_sql = f"SELECT start_time FROM {self.get_option('table_name')} WHERE id = %s;"
-        duration = -1
         try:
-             with conn.cursor() as cur:
-                cur.execute(start_time_sql, (self.playbook_run_id,))
-                start_time_result = cur.fetchone()
-                if start_time_result:
-                    duration = (end_time - start_time_result[0]).total_seconds()
-        except Exception as e:
-            self._display.v(f"Could not calculate duration: {e}")
+            run_by_user = getpass.getuser()
+        except Exception:
+            run_by_user = 'unknown'
 
-
-        sql = f"""
-        UPDATE {self.get_option('table_name')}
-        SET end_time = %s, duration_seconds = %s, status = %s, stats = %s
-        WHERE id = %s;
+        environment = self.playbook_vars.get('environment', 'N/A')
+        service_type = self.playbook_vars.get('service_type', 'N/A')
+        build_version = self.playbook_vars.get('build_version', 'N/A')
+        data_type = self.playbook_vars.get('data_type', 'N/A')
+        
+        upsert_sql = f"""
+        INSERT INTO {self.table_name} (
+            vm_name, environment, service_type, build_version, data_type, 
+            created_at, updated_at, created_by, updated_by, 
+            lifecycle_status, status_message
+        ) VALUES (
+            %(vm_name)s, %(environment)s, %(service_type)s, %(build_version)s, %(data_type)s,
+            NOW(), NOW(), %(created_by)s, %(updated_by)s, 
+            %(lifecycle_status)s, %(status_message)s
+        )
+        ON CONFLICT (vm_name) DO UPDATE SET
+            environment = EXCLUDED.environment,
+            service_type = EXCLUDED.service_type,
+            build_version = EXCLUDED.build_version,
+            data_type = EXCLUDED.data_type,
+            updated_at = EXCLUDED.updated_at,
+            updated_by = EXCLUDED.updated_by,
+            lifecycle_status = EXCLUDED.lifecycle_status,
+            status_message = EXCLUDED.status_message;
         """
 
-        try:
-            with conn.cursor() as cur:
-                cur.execute(sql, (end_time, int(duration), overall_status, json.dumps(hosts_summary), self.playbook_run_id))
-            conn.commit()
-            self._display.v(f"Updated playbook run ID {self.playbook_run_id} in PostgreSQL with final status.")
-        except Exception as e:
-            self._display.error(f"Failed to log playbook end: {e}")
-        finally:
-            if conn:
-                conn.close()
+        for host_name in stats.processed.keys():
+            summary = stats.summarize(host_name)
+            
+            if summary['failures'] > 0 or summary['unreachable'] > 0:
+                lifecycle_status = 'failed'
+            else:
+                lifecycle_status = 'success'
+
+            host_data = {
+                "vm_name": host_name,
+                "environment": environment,
+                "service_type": service_type,
+                "build_version": build_version,
+                "data_type": data_type,
+                "created_by": run_by_user,
+                "updated_by": run_by_user,
+                "lifecycle_status": lifecycle_status,
+                "status_message": Json(summary)
+            }
+            
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(upsert_sql, host_data)
+                self._display.v(f"Postgres VM Logger: Logged status for host {host_name}")
+            except Exception as e:
+                self._display.error(f"Postgres VM Logger: Failed to log status for {host_name}: {e}")
+        
+        conn.commit()
+        conn.close()
 ```
