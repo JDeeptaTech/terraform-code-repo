@@ -1,6 +1,42 @@
 
 ```text
+# terraform.j2
+datacenter_name          = "{{ datacenter_name }}"
+datastore_cluster_name   = "{{ datastore_cluster_name }}"
+cluster_name             = "{{ cluster_name }}"
+network_name             = "{{ network_name }}"
+vm_template_name         = "{{ vm_template_name }}"
+is_performance_vm        = {{ is_performance_vm | lower }}
+folder_name              = "{{ folder_name }}"
+custom_attributes        = {
+  {%- for key, value in custom_attributes.items() -%}
+    "{{ key }}":"{{ value }}"{% if not loop.last %},{% endif %}
+  {%- endfor -%}
+}
+tags = [
+  {%- for tag in tags -%}
+  {
+    name     = "{{ tag.name }}",
+    category = "{{ tag.category }}"
+  }{% if not loop.last %},{% endif %}
+  {%- endfor -%}
+]
+os_family                = "{{ os_family }}"
+backup                   = {{ backup | lower }}
+vm_name                  = "{{ vm_name }}"
+num_cpus                 = {{ num_cpus }}
+memory                   = {{ memory }}
+disks = [
+  {%- for disk in disks -%}
+  {
+    label       = "{{ disk.label }}",
+    size        = {{ disk.size }},
+    unit_number = {{ disk.unit_number }}
+  }{% if not loop.last %},{% endif %}
+  {%- endfor -%}
+]
 
+----
 Project layout
 Copy
 Edit
