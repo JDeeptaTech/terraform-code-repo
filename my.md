@@ -1,3 +1,122 @@
+```py
+import hvac
+import os
+
+def get_approle_credentials(vault_addr, vault_token, role_name):
+    """
+    Uses a privileged token to fetch the RoleID and generate a new SecretID.
+
+    Args:
+        vault_addr (str): The URL of the Vault server.
+        vault_token (str): A privileged token with permissions to manage AppRoles.
+        role_name (str): The name of the AppRole.
+
+    Returns:
+        tuple: A tuple containing the (role_id, secret_id), or (None, None) on failure.
+    """
+    try:
+        # Step 1: Connect to Vault using the privileged token
+        print("Connecting with privileged token to generate credentials...")
+        client = hvac.Client(url=vault_addr, token=vault_token)
+
+        if not client.is_authenticated():
+            print("Error: The provided privileged token is invalid or has expired.")
+            return None, None
+
+        # Step 2: Read the RoleID for the given role name
+        read_role_id_response = client.auth.approle.read_role_id(role_name=role_name)
+        role_id = read_role_id_response['data']['role_id']
+        print(f"Successfully fetched RoleID for role '{role_name}'.")
+
+        # Step 3: Generate a new SecretID for the role
+        generate_secret_id_response = client.auth.approle.generate_secret_id(role_name=role_name)
+        secret_id = generate_secret_id_response['data']['secret_id']
+        print("Successfully generated a new SecretID.")
+
+        return role_id, secret_id
+
+    except hvac.exceptions.Forbidden:
+        print(f"Error: The provided token does not have permission to manage the AppRole '{role_name}'.")
+        return None, None
+    except Exception as e:
+        print(f"An error occurred while generating credentials: {e}")
+        return None, None
+
+
+def get_vault_secret(vault_addr, approle_id, approle_secret_id, secret_path, secret_key):
+    """
+    Authenticates to Vault using AppRole and fetches a secret. (This function is the same as before)
+    """
+    try:
+        # Step 1: Initialize a new client for the application login
+        client = hvac.Client(url=vault_addr)
+
+        print("\nAttempting to authenticate with newly generated AppRole credentials...")
+
+        # Step 2: Authenticate using AppRole to get an application token
+        auth_response = client.auth.approle.login(
+            role_id=approle_id,
+            secret_id=approle_secret_id,
+        )
+        
+        print("Successfully authenticated with AppRole.")
+
+        # Step 3: Fetch the secret from the KVv2 store
+        print(f"Fetching secret from path: {secret_path}")
+        read_secret_response = client.secrets.kv.v2.read_secret_version(path=secret_path)
+        secret_data = read_secret_response['data']['data']
+        secret_value = secret_data.get(secret_key)
+
+        if secret_value:
+            print(f"Successfully retrieved the secret for key: '{secret_key}'")
+            return secret_value
+        else:
+            print(f"Error: Key '{secret_key}' not found in the secret at '{secret_path}'")
+            return None
+
+    except Exception as e:
+        print(f"An unexpected error occurred while fetching the secret: {e}")
+        return None
+
+
+# --- How to use the functions ---
+if __name__ == "__main__":
+    # Get configuration from environment variables
+    VAULT_ADDRESS = os.getenv('VAULT_ADDR', 'http://127.0.0.1:8200')
+    # This is the privileged token needed to create the SecretID
+    VAULT_PRIMARY_TOKEN = os.getenv('VAULT_TOKEN')
+
+    # --- Variables you need to change ---
+    APPROLE_ROLE_NAME = 'my-app-role'  # The name of your AppRole in Vault
+    SECRET_PATH = 'myapp/config'       # The path to your secret
+    SECRET_KEY_TO_FETCH = 'api_key'    # The key within the secret
+
+    # Check for the primary token
+    if not VAULT_PRIMARY_TOKEN:
+        print("Error: Please set the VAULT_TOKEN environment variable with a privileged token.")
+    else:
+        # First, generate the AppRole credentials
+        role_id, secret_id = get_approle_credentials(
+            vault_addr=VAULT_ADDRESS,
+            vault_token=VAULT_PRIMARY_TOKEN,
+            role_name=APPROLE_ROLE_NAME
+        )
+        
+        # If credentials were generated successfully, use them to get the secret
+        if role_id and secret_id:
+            retrieved_value = get_vault_secret(
+                vault_addr=VAULT_ADDRESS,
+                approle_id=role_id,
+                approle_secret_id=secret_id,
+                secret_path=SECRET_PATH,
+                secret_key=SECRET_KEY_TO_FETCH,
+            )
+
+            if retrieved_value:
+                print("\n---")
+                print(f"✅ The value of '{SECRET_KEY_TO_FETCH}' is: {retrieved_value}")
+                print("---")
+```
 ```cfg
 [defaults]
 callback_plugins = ./callback_plugins
