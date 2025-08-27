@@ -1,6 +1,90 @@
 ```py
 import hvac
 import os
+import sys
+
+def create_orphan_token(vault_addr, vault_token, policies, ttl):
+    """
+    Uses a privileged token to create a new orphan token.
+
+    Args:
+        vault_addr (str): The URL of the Vault server.
+        vault_token (str): A valid, privileged token with permissions to create tokens.
+        policies (list): A list of policies to attach to the new token.
+        ttl (str): The Time-To-Live for the new token (e.g., '8h', '768h').
+
+    Returns:
+        dict: The new orphan token's data, or None on failure.
+    """
+    try:
+        # Step 1: Connect to Vault using the primary token
+        print("Connecting with primary token to create a new orphan token...")
+        client = hvac.Client(url=vault_addr, token=vault_token)
+
+        if not client.is_authenticated():
+            print("Error: The provided primary token is invalid or has expired.")
+            return None
+
+        # Step 2: Create a new token with the 'orphan' flag set to True
+        # This requires that the primary token has 'sudo' capabilities on the 'auth/token/create' path.
+        print(f"Creating a new orphan token with TTL '{ttl}' and policies {policies}...")
+        
+        new_token_response = client.auth.token.create(
+            policies=policies,
+            ttl=ttl,
+            orphan=True,  # This is the key parameter to make the token an orphan
+            renewable=True
+        )
+
+        print("✅ Successfully created a new orphan token.")
+        return new_token_response['auth']
+
+    except hvac.exceptions.Forbidden:
+        print("\nError: Permission denied.")
+        print("The provided token does not have 'sudo' permissions on the 'auth/token/create' path, which is required to create an orphan token.")
+        return None
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        return None
+
+# --- How to use the function ---
+if __name__ == "__main__":
+    # Get configuration from environment variables
+    VAULT_ADDRESS = os.getenv('VAULT_ADDR', 'http://127.0.0.1:8200')
+    # This is a valid, privileged token needed to create other tokens.
+    VAULT_PRIMARY_TOKEN = os.getenv('VAULT_TOKEN')
+
+    if not VAULT_PRIMARY_TOKEN:
+        print("Error: Please set the VAULT_TOKEN environment variable with a valid token.")
+        sys.exit(1)
+
+    # --- Configuration for the new token ---
+    # Define the policies for the new token. It must be a subset of the primary token's policies.
+    NEW_TOKEN_POLICIES = ['default', 'my-app-policy']
+    # Set a TTL for the new token (e.g., 30 days)
+    NEW_TOKEN_TTL = '720h'
+    
+    # Create the new orphan token
+    new_token_info = create_orphan_token(
+        vault_addr=VAULT_ADDRESS,
+        vault_token=VAULT_PRIMARY_TOKEN,
+        policies=NEW_TOKEN_POLICIES,
+        ttl=NEW_TOKEN_TTL
+    )
+    
+    if new_token_info:
+        print("\n--- New Orphan Token Details ---")
+        print(f"Client Token: {new_token_info['client_token']}")
+        print(f"Accessor:     {new_token_info['accessor']}")
+        print(f"Policies:     {new_token_info['policies']}")
+        print(f"Lease (TTL):  {new_token_info['lease_duration']}s")
+        print(f"Renewable:    {new_token_info['renewable']}")
+        print("---------------------------------")
+```
+
+```py
+import hvac
+import os
 
 def get_approle_credentials(vault_addr, vault_token, role_name):
     """
