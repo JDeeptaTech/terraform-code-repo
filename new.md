@@ -1,4 +1,77 @@
 ```py
+# main_app.py
+
+import httpx
+from fastapi import FastAPI, Request, HTTPException
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.datastructures import MutableHeaders
+import uvicorn
+
+# --- Custom Middleware ---
+
+class TokenInjectorMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # URL of the external token provider service
+        token_provider_url = "http://127.0.0.1:8001/get-token"
+
+        try:
+            # Use httpx.AsyncClient for async requests
+            async with httpx.AsyncClient() as client:
+                # Call the external API to get a token
+                response = await client.post(token_provider_url)
+                response.raise_for_status()  # Raise an exception for 4xx or 5xx status codes
+                
+                token_data = response.json()
+                token = f"{token_data['token_type']} {token_data['access_token']}"
+
+        except (httpx.RequestError, KeyError) as e:
+            # Handle cases where the token service is down or returns an unexpected format
+            print(f"Error fetching token: {e}")
+            raise HTTPException(
+                status_code=503, 
+                detail="Service unavailable: Could not fetch authentication token."
+            )
+
+        # FastAPI/Starlette request headers are immutable.
+        # To modify them, we need to create a new MutableHeaders object.
+        new_headers = MutableHeaders(request.scope)
+        
+        # Add the new Authorization header from the fetched token
+        new_headers["Authorization"] = token
+        
+        # Update the request's scope with the new headers
+        request.scope['headers'] = new_headers.raw
+
+        # Proceed to the actual endpoint with the modified request
+        response = await call_next(request)
+        return response
+
+# --- FastAPI App ---
+
+app = FastAPI()
+
+# Add the middleware to the application
+app.add_middleware(TokenInjectorMiddleware)
+
+
+@app.get("/items/{item_id}")
+async def read_item(item_id: int, request: Request):
+    """
+    A test endpoint to check if the Authorization header was added.
+    """
+    # Get the authorization header that the middleware should have added
+    authorization_header = request.headers.get("Authorization")
+    
+    return {
+        "item_id": item_id,
+        "injected_authorization_header": authorization_header
+    }
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+````
+
+```py
 # In callback_plugins/postgres_vm_logger.py
 
 from __future__ import (absolute_import, division, print_function)
