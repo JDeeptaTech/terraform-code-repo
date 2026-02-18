@@ -1,0 +1,1347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>VM Self-Service Portal — API Reference</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui.css"/>
+  <style>
+    :root {
+      --bg:        #0b0f1a;
+      --surface:   #111827;
+      --surface2:  #1a2236;
+      --border:    #1f2d45;
+      --accent:    #00d4ff;
+      --accent2:   #7c3aed;
+      --green:     #10b981;
+      --orange:    #f59e0b;
+      --red:       #ef4444;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --font-head: 'Syne', sans-serif;
+      --font-body: 'DM Sans', sans-serif;
+      --font-code: 'DM Mono', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-body);
+      min-height: 100vh;
+    }
+
+    /* ── Top Header Bar ─────────────────────────── */
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(11,15,26,0.92);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2.5rem;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      animation: slideDown .5s ease both;
+    }
+    @keyframes slideDown { from { transform: translateY(-100%); opacity:0; } to { transform: translateY(0); opacity:1; } }
+
+    .site-header .logo {
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+    }
+    .site-header .logo-icon {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      font-size: 16px;
+    }
+    .site-header .logo-text {
+      font-family: var(--font-head);
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -.01em;
+      color: var(--text);
+    }
+    .site-header .logo-text span {
+      color: var(--accent);
+    }
+
+    .header-pills {
+      display: flex;
+      gap: .5rem;
+      align-items: center;
+    }
+    .pill {
+      font-family: var(--font-code);
+      font-size: .7rem;
+      font-weight: 500;
+      padding: .25rem .7rem;
+      border-radius: 999px;
+      border: 1px solid;
+    }
+    .pill-version  { color: var(--accent);  border-color: var(--accent);  background: rgba(0,212,255,.08); }
+    .pill-env      { color: var(--green);   border-color: var(--green);   background: rgba(16,185,129,.08); }
+    .pill-async    { color: var(--orange);  border-color: var(--orange);  background: rgba(245,158,11,.08); }
+
+    /* ── Hero Banner ────────────────────────────── */
+    .hero {
+      padding: 3.5rem 2.5rem 2.5rem;
+      background: linear-gradient(180deg, rgba(0,212,255,.04) 0%, transparent 100%);
+      border-bottom: 1px solid var(--border);
+      animation: fadeUp .6s .1s ease both;
+    }
+    @keyframes fadeUp { from { transform: translateY(20px); opacity:0; } to { transform: translateY(0); opacity:1; } }
+
+    .hero-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .hero-tag {
+      font-family: var(--font-code);
+      font-size: .72rem;
+      color: var(--accent);
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      margin-bottom: .75rem;
+    }
+    .hero h1 {
+      font-family: var(--font-head);
+      font-size: 2.6rem;
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -.03em;
+      margin-bottom: 1rem;
+    }
+    .hero h1 em {
+      font-style: normal;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero-desc {
+      font-size: 1rem;
+      color: var(--muted);
+      max-width: 680px;
+      line-height: 1.7;
+      margin-bottom: 2rem;
+    }
+
+    .hero-stats {
+      display: flex;
+      gap: 2.5rem;
+      flex-wrap: wrap;
+    }
+    .stat {
+      display: flex;
+      flex-direction: column;
+      gap: .25rem;
+    }
+    .stat-num {
+      font-family: var(--font-head);
+      font-size: 1.9rem;
+      font-weight: 800;
+      color: var(--text);
+      line-height: 1;
+    }
+    .stat-num span { color: var(--accent); }
+    .stat-label {
+      font-size: .78rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    /* ── Category Cards ─────────────────────────── */
+    .categories-section {
+      padding: 2rem 2.5rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      animation: fadeUp .6s .2s ease both;
+    }
+    .categories-inner {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .section-label {
+      font-family: var(--font-code);
+      font-size: .7rem;
+      color: var(--muted);
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+    }
+    .cat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: .75rem;
+    }
+    .cat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      cursor: pointer;
+      transition: all .2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .cat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: var(--card-color, var(--accent));
+      transform: scaleX(0);
+      transform-origin: left;
+      transition: transform .25s;
+    }
+    .cat-card:hover { border-color: var(--card-color, var(--accent)); transform: translateY(-2px); }
+    .cat-card:hover::before { transform: scaleX(1); }
+    .cat-card .cat-icon { font-size: 1.4rem; margin-bottom: .5rem; }
+    .cat-card .cat-name {
+      font-family: var(--font-head);
+      font-size: .88rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: .25rem;
+    }
+    .cat-card .cat-count {
+      font-family: var(--font-code);
+      font-size: .7rem;
+      color: var(--muted);
+    }
+
+    /* ── Swagger Container ─────────────────────── */
+    #swagger-wrapper {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 1.5rem 2.5rem 4rem;
+      animation: fadeUp .6s .3s ease both;
+    }
+
+    /* ── Swagger Overrides ─────────────────────── */
+    #swagger-ui .swagger-ui {
+      font-family: var(--font-body) !important;
+      color: var(--text) !important;
+    }
+
+    /* Topbar — hide default */
+    #swagger-ui .swagger-ui .topbar { display: none !important; }
+
+    /* Info section */
+    #swagger-ui .swagger-ui .info { margin: 0 0 1.5rem !important; }
+    #swagger-ui .swagger-ui .info .title { display: none; }
+    #swagger-ui .swagger-ui .info .description {
+      background: var(--surface) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 12px !important;
+      padding: 1.25rem 1.5rem !important;
+      color: var(--muted) !important;
+      font-size: .88rem !important;
+      line-height: 1.7 !important;
+    }
+    #swagger-ui .swagger-ui .info .description h2,
+    #swagger-ui .swagger-ui .info .description h3 {
+      font-family: var(--font-head) !important;
+      color: var(--text) !important;
+      font-size: .95rem !important;
+      margin: .75rem 0 .4rem !important;
+    }
+    #swagger-ui .swagger-ui .info .description p { color: var(--muted) !important; }
+    #swagger-ui .swagger-ui .info .description li { color: var(--muted) !important; }
+    #swagger-ui .swagger-ui .info .description strong { color: var(--accent) !important; }
+
+    /* Tag sections */
+    #swagger-ui .swagger-ui .opblock-tag {
+      background: var(--surface) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 10px !important;
+      margin-bottom: .5rem !important;
+      padding: .75rem 1.25rem !important;
+      font-family: var(--font-head) !important;
+      font-size: .95rem !important;
+      font-weight: 700 !important;
+      color: var(--text) !important;
+      transition: all .2s !important;
+    }
+    #swagger-ui .swagger-ui .opblock-tag:hover {
+      border-color: var(--accent) !important;
+      background: var(--surface2) !important;
+    }
+    #swagger-ui .swagger-ui .opblock-tag small {
+      font-family: var(--font-body) !important;
+      font-weight: 400 !important;
+      font-size: .8rem !important;
+      color: var(--muted) !important;
+    }
+
+    /* Operation blocks */
+    #swagger-ui .swagger-ui .opblock {
+      background: var(--surface) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 8px !important;
+      margin-bottom: .4rem !important;
+      box-shadow: none !important;
+    }
+    #swagger-ui .swagger-ui .opblock:hover {
+      border-color: var(--border) !important;
+    }
+    #swagger-ui .swagger-ui .opblock.is-open {
+      border-color: var(--accent) !important;
+    }
+
+    /* Method badges */
+    #swagger-ui .swagger-ui .opblock-summary-method {
+      font-family: var(--font-code) !important;
+      font-size: .72rem !important;
+      font-weight: 600 !important;
+      min-width: 68px !important;
+      text-align: center !important;
+      border-radius: 5px !important;
+      padding: .28rem .6rem !important;
+      letter-spacing: .04em !important;
+    }
+    #swagger-ui .swagger-ui .opblock.opblock-post .opblock-summary-method { background: #065f46 !important; color: #6ee7b7 !important; }
+    #swagger-ui .swagger-ui .opblock.opblock-get .opblock-summary-method  { background: #1e3a5f !important; color: #7dd3fc !important; }
+    #swagger-ui .swagger-ui .opblock.opblock-put .opblock-summary-method  { background: #451a03 !important; color: #fdba74 !important; }
+    #swagger-ui .swagger-ui .opblock.opblock-delete .opblock-summary-method { background: #450a0a !important; color: #fca5a5 !important; }
+    #swagger-ui .swagger-ui .opblock.opblock-patch .opblock-summary-method { background: #1e1b4b !important; color: #c4b5fd !important; }
+
+    /* Operation header backgrounds */
+    #swagger-ui .swagger-ui .opblock.opblock-post   .opblock-summary { background: rgba(16,185,129,.05) !important; }
+    #swagger-ui .swagger-ui .opblock.opblock-get    .opblock-summary { background: rgba(0,212,255,.04) !important; }
+    #swagger-ui .swagger-ui .opblock.opblock-delete .opblock-summary { background: rgba(239,68,68,.05) !important; }
+
+    /* Summary path */
+    #swagger-ui .swagger-ui .opblock-summary-path {
+      font-family: var(--font-code) !important;
+      font-size: .82rem !important;
+      color: var(--text) !important;
+    }
+    #swagger-ui .swagger-ui .opblock-summary-path span {
+      color: var(--accent) !important;
+    }
+    #swagger-ui .swagger-ui .opblock-summary-description {
+      font-size: .82rem !important;
+      color: var(--muted) !important;
+    }
+
+    /* Expanded body */
+    #swagger-ui .swagger-ui .opblock-body {
+      background: var(--surface2) !important;
+      border-top: 1px solid var(--border) !important;
+    }
+    #swagger-ui .swagger-ui .opblock-section-header {
+      background: transparent !important;
+      border-bottom: 1px solid var(--border) !important;
+    }
+    #swagger-ui .swagger-ui .opblock-section-header h4 {
+      font-family: var(--font-head) !important;
+      font-size: .82rem !important;
+      font-weight: 700 !important;
+      color: var(--text) !important;
+    }
+    #swagger-ui .swagger-ui .tab li {
+      font-family: var(--font-code) !important;
+      font-size: .78rem !important;
+      color: var(--muted) !important;
+    }
+    #swagger-ui .swagger-ui .tab li.active {
+      color: var(--accent) !important;
+      border-bottom: 2px solid var(--accent) !important;
+    }
+
+    /* Tables */
+    #swagger-ui .swagger-ui table thead tr th,
+    #swagger-ui .swagger-ui table thead tr td {
+      font-family: var(--font-code) !important;
+      font-size: .75rem !important;
+      color: var(--muted) !important;
+      background: var(--surface) !important;
+      border-bottom: 1px solid var(--border) !important;
+      padding: .5rem .75rem !important;
+    }
+    #swagger-ui .swagger-ui table tbody tr td {
+      font-family: var(--font-code) !important;
+      font-size: .78rem !important;
+      color: var(--text) !important;
+      border-bottom: 1px solid var(--border) !important;
+      background: transparent !important;
+      padding: .5rem .75rem !important;
+    }
+    #swagger-ui .swagger-ui .parameter__name {
+      font-family: var(--font-code) !important;
+      color: var(--accent) !important;
+      font-size: .82rem !important;
+    }
+    #swagger-ui .swagger-ui .parameter__type {
+      font-family: var(--font-code) !important;
+      color: var(--orange) !important;
+      font-size: .75rem !important;
+    }
+    #swagger-ui .swagger-ui .parameter__in {
+      font-family: var(--font-code) !important;
+      font-size: .7rem !important;
+      color: var(--muted) !important;
+    }
+    #swagger-ui .swagger-ui .renderedMarkdown p {
+      font-size: .85rem !important;
+      color: var(--muted) !important;
+      line-height: 1.65 !important;
+    }
+    #swagger-ui .swagger-ui .renderedMarkdown strong { color: var(--text) !important; }
+    #swagger-ui .swagger-ui .renderedMarkdown code {
+      font-family: var(--font-code) !important;
+      background: var(--surface) !important;
+      color: var(--accent) !important;
+      padding: .1rem .35rem !important;
+      border-radius: 4px !important;
+      font-size: .8rem !important;
+    }
+    #swagger-ui .swagger-ui .renderedMarkdown table th {
+      font-size: .75rem !important;
+      color: var(--muted) !important;
+    }
+    #swagger-ui .swagger-ui .renderedMarkdown table td {
+      font-size: .8rem !important;
+      color: var(--text) !important;
+    }
+
+    /* JSON / Code blocks */
+    #swagger-ui .swagger-ui .highlight-code,
+    #swagger-ui .swagger-ui .microlight {
+      background: #060b14 !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 6px !important;
+      font-family: var(--font-code) !important;
+      font-size: .78rem !important;
+      padding: 1rem !important;
+    }
+    #swagger-ui .swagger-ui .copy-to-clipboard {
+      background: var(--surface2) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 5px !important;
+    }
+
+    /* Response codes */
+    #swagger-ui .swagger-ui .responses-inner h4,
+    #swagger-ui .swagger-ui .responses-inner h5 {
+      font-family: var(--font-head) !important;
+      color: var(--text) !important;
+      font-size: .82rem !important;
+    }
+    #swagger-ui .swagger-ui .response-col_status {
+      font-family: var(--font-code) !important;
+      font-size: .85rem !important;
+      font-weight: 600 !important;
+    }
+    #swagger-ui .swagger-ui .response-col_status.col_status--2 { color: var(--green) !important; }
+    #swagger-ui .swagger-ui .response-col_status.col_status--4 { color: var(--orange) !important; }
+    #swagger-ui .swagger-ui .response-col_status.col_status--5 { color: var(--red) !important; }
+
+    /* Buttons */
+    #swagger-ui .swagger-ui .btn {
+      font-family: var(--font-code) !important;
+      font-size: .78rem !important;
+      border-radius: 6px !important;
+      font-weight: 500 !important;
+      transition: all .15s !important;
+    }
+    #swagger-ui .swagger-ui .btn.execute {
+      background: var(--accent) !important;
+      border-color: var(--accent) !important;
+      color: #000 !important;
+      font-weight: 600 !important;
+    }
+    #swagger-ui .swagger-ui .btn.execute:hover { opacity: .85 !important; }
+    #swagger-ui .swagger-ui .btn.cancel {
+      border-color: var(--red) !important;
+      color: var(--red) !important;
+    }
+    #swagger-ui .swagger-ui .btn.try-out__btn {
+      border-color: var(--accent2) !important;
+      color: var(--accent2) !important;
+    }
+
+    /* Models section */
+    #swagger-ui .swagger-ui section.models {
+      background: var(--surface) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 10px !important;
+    }
+    #swagger-ui .swagger-ui section.models h4 {
+      font-family: var(--font-head) !important;
+      color: var(--text) !important;
+      font-size: .95rem !important;
+    }
+    #swagger-ui .swagger-ui .model-box {
+      background: var(--surface2) !important;
+    }
+    #swagger-ui .swagger-ui .model .property.primitive { color: var(--orange) !important; }
+    #swagger-ui .swagger-ui .model-title { color: var(--text) !important; font-family: var(--font-head) !important; }
+
+    /* Form inputs */
+    #swagger-ui .swagger-ui input[type="text"],
+    #swagger-ui .swagger-ui input[type="email"],
+    #swagger-ui .swagger-ui input[type="file"],
+    #swagger-ui .swagger-ui select,
+    #swagger-ui .swagger-ui textarea {
+      background: var(--bg) !important;
+      border: 1px solid var(--border) !important;
+      color: var(--text) !important;
+      border-radius: 6px !important;
+      font-family: var(--font-code) !important;
+      font-size: .82rem !important;
+    }
+    #swagger-ui .swagger-ui input:focus,
+    #swagger-ui .swagger-ui textarea:focus {
+      border-color: var(--accent) !important;
+      outline: none !important;
+      box-shadow: 0 0 0 2px rgba(0,212,255,.15) !important;
+    }
+
+    /* Auth modal */
+    #swagger-ui .swagger-ui .dialog-ux .modal-ux {
+      background: var(--surface) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 14px !important;
+    }
+    #swagger-ui .swagger-ui .dialog-ux .modal-ux-header {
+      background: var(--surface2) !important;
+      border-bottom: 1px solid var(--border) !important;
+    }
+    #swagger-ui .swagger-ui .dialog-ux .modal-ux-header h3 {
+      font-family: var(--font-head) !important;
+      color: var(--text) !important;
+    }
+
+    /* Server selector */
+    #swagger-ui .swagger-ui .servers > label { color: var(--muted) !important; font-family: var(--font-code) !important; font-size: .8rem !important; }
+    #swagger-ui .swagger-ui .servers select {
+      background: var(--surface) !important;
+      border-color: var(--border) !important;
+      color: var(--text) !important;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+    /* Misc cleanup */
+    #swagger-ui .swagger-ui .wrapper { padding: 0 !important; max-width: 100% !important; }
+    #swagger-ui .swagger-ui .scheme-container {
+      background: var(--surface) !important;
+      border: 1px solid var(--border) !important;
+      border-radius: 8px !important;
+      padding: .75rem 1rem !important;
+      margin-bottom: 1rem !important;
+      box-shadow: none !important;
+    }
+    #swagger-ui .swagger-ui .opblock-tag-section { margin-bottom: .5rem !important; }
+    #swagger-ui .swagger-ui svg.arrow { fill: var(--muted) !important; }
+    #swagger-ui .swagger-ui .expand-operation svg { fill: var(--accent) !important; }
+    #swagger-ui .swagger-ui .auth-wrapper .authorize svg { fill: var(--accent) !important; }
+    #swagger-ui .swagger-ui .auth-btn-wrapper .authorize {
+      background: transparent !important;
+      border: 1px solid var(--accent) !important;
+      color: var(--accent) !important;
+    }
+    #swagger-ui .swagger-ui .unlocked svg,
+    #swagger-ui .swagger-ui .locked svg { fill: var(--accent) !important; }
+    #swagger-ui .swagger-ui .info a { color: var(--accent) !important; }
+    #swagger-ui .swagger-ui .info a:hover { color: var(--text) !important; }
+
+    /* Required asterisk */
+    #swagger-ui .swagger-ui .parameter__name.required::after { color: var(--red) !important; }
+
+    /* Loading indicator */
+    #swagger-ui .swagger-ui .loading-container .loading::after {
+      border-color: var(--accent) transparent transparent transparent !important;
+    }
+
+    /* Footer */
+    .site-footer {
+      border-top: 1px solid var(--border);
+      padding: 1.5rem 2.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+    }
+    .site-footer .footer-note {
+      font-family: var(--font-code);
+      font-size: .72rem;
+      color: var(--muted);
+    }
+    .site-footer .footer-note span { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+  <!-- ── Top Bar ─────────────────────────────────── -->
+  <header class="site-header">
+    <div class="logo">
+      <div class="logo-icon">⚡</div>
+      <div class="logo-text">VM <span>Self-Service</span> Portal</div>
+    </div>
+    <div class="header-pills">
+      <span class="pill pill-version">v2.0.0</span>
+      <span class="pill pill-env">OpenAPI 3.0</span>
+      <span class="pill pill-async">Async</span>
+    </div>
+  </header>
+
+  <!-- ── Hero ────────────────────────────────────── -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-tag">Infrastructure Self-Service · API Reference</div>
+      <h1>VM Management <em>API</em><br/>for Self-Service Teams</h1>
+      <p class="hero-desc">
+        Provision, operate, and monitor virtual machines through a unified async API.
+        All business rules are DB-configurable — no code deployment needed to update policies.
+      </p>
+      <div class="hero-stats">
+        <div class="stat"><div class="stat-num">14<span>+</span></div><div class="stat-label">Endpoints</div></div>
+        <div class="stat"><div class="stat-num">5</div><div class="stat-label">Categories</div></div>
+        <div class="stat"><div class="stat-num">202</div><div class="stat-label">Async Pattern</div></div>
+        <div class="stat"><div class="stat-num">50</div><div class="stat-label">Max Batch Tasks</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Category Quick Nav ──────────────────────── -->
+  <section class="categories-section">
+    <div class="categories-inner">
+      <div class="section-label">Jump to category</div>
+      <div class="cat-grid">
+        <div class="cat-card" style="--card-color:#00d4ff" onclick="scrollToTag('VM Provisioning')">
+          <div class="cat-icon">🖥️</div>
+          <div class="cat-name">VM Provisioning</div>
+          <div class="cat-count">1 endpoint · POST</div>
+        </div>
+        <div class="cat-card" style="--card-color:#7c3aed" onclick="scrollToTag('VM Operations')">
+          <div class="cat-icon">⚙️</div>
+          <div class="cat-name">VM Operations</div>
+          <div class="cat-count">2 endpoints · POST · GET</div>
+        </div>
+        <div class="cat-card" style="--card-color:#10b981" onclick="scrollToTag('Batch Requests')">
+          <div class="cat-icon">📦</div>
+          <div class="cat-name">Batch Requests</div>
+          <div class="cat-count">3 endpoints · POST · GET</div>
+        </div>
+        <div class="cat-card" style="--card-color:#f59e0b" onclick="scrollToTag('Status')">
+          <div class="cat-icon">📊</div>
+          <div class="cat-name">Status & Tracking</div>
+          <div class="cat-count">3 endpoints · GET · POST</div>
+        </div>
+        <div class="cat-card" style="--card-color:#ec4899" onclick="scrollToTag('Catalogue')">
+          <div class="cat-icon">📋</div>
+          <div class="cat-name">Catalogue</div>
+          <div class="cat-count">2 endpoints · GET</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Swagger UI ───────────────────────────────── -->
+  <div id="swagger-wrapper">
+    <div id="swagger-ui"></div>
+  </div>
+
+  <!-- ── Footer ──────────────────────────────────── -->
+  <footer class="site-footer">
+    <div class="footer-note">VM Self-Service Portal · API <span>v2.0.0</span> · OpenAPI 3.0.3</div>
+    <div class="footer-note">Base URL: <span>https://api.company.com/v2/self-service</span></div>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui-bundle.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui-standalone-preset.js"></script>
+  <script>
+    const spec = {
+      openapi: "3.0.3",
+      info: {
+        title: "VM Self-Service Portal API",
+        version: "2.0.0",
+        description: `### How this API works
+
+All write operations are **asynchronous** — every \`POST\` returns \`202 Accepted\` immediately with a \`requestId\`. Use \`GET /requests/{requestId}\` to track progress.
+
+**Status lifecycle:** \`pending\` → \`in-progress\` → \`completed\` | \`failed\` | \`cancelled\`
+
+### Business Validation
+All rules (allowed VM sizes, naming conventions, required tags, quotas) are **stored in the database** and can be updated without any code deployment.
+
+### Authentication
+All endpoints require a **Bearer token** from Azure AD. Scopes:
+- \`VMs.Read\` — read requests and status
+- \`VMs.Write\` — submit builds and operations
+- \`VMs.Admin\` — full access including all environments`
+      },
+      servers: [
+        { url: "https://api.company.com/v2/self-service", description: "🟢 Production" },
+        { url: "https://api-uat.company.com/v2/self-service", description: "🟡 UAT" },
+        { url: "https://api-dev.company.com/v2/self-service", description: "🔵 Development" }
+      ],
+      tags: [
+        { name: "🖥️ VM Provisioning", description: "Request new VM builds and track provisioning status" },
+        { name: "⚙️ VM Operations", description: "Day-2 operations on existing VMs: resize, add/remove disks, power, delete" },
+        { name: "📦 Batch Requests", description: "Submit and manage bulk operations — up to 50 tasks per batch with dependency ordering" },
+        { name: "📊 Status & Tracking", description: "Track any request, list history, cancel pending jobs" },
+        { name: "📋 Catalogue", description: "Browse available VM sizes, OS templates, and allowed configurations before submitting" }
+      ],
+      paths: {
+        "/vms": {
+          post: {
+            tags: ["🖥️ VM Provisioning"],
+            summary: "Request a new VM build",
+            operationId: "requestVmBuild",
+            description: `Submit a request to provision a new VM. Returns a \`requestId\` immediately.
+
+**Typical provisioning time:** 15–30 minutes
+
+**Business rules enforced from DB (no code change needed):**
+| Rule | Configurable per Environment |
+|------|------------------------------|
+| Allowed VM sizes | ✅ Yes |
+| Naming convention (regex) | ✅ Yes |
+| Required tags | ✅ Yes |
+| Allowed OS templates | ✅ Yes |
+| Allowed Azure locations | ✅ Yes |
+| Max disks per VM | ✅ Yes |
+| Team VM quota | ✅ Yes |
+| Production group access | ✅ Yes |`,
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/VmBuildRequest" },
+                  examples: {
+                    linux_prod: {
+                      summary: "Linux web server (production)",
+                      value: {
+                        name: "prod-web-01",
+                        environment: "production",
+                        template: "ubuntu-22-04-lts",
+                        size: "Standard_D4s_v5",
+                        location: "uksouth",
+                        tags: { team: "platform", project: "ecommerce", "cost-centre": "CC-1234", "data-classification": "internal" },
+                        disks: [{ sizeGb: 128, type: "Premium_LRS", purpose: "data" }],
+                        justification: "Q4 campaign requires additional capacity"
+                      }
+                    },
+                    windows_dev: {
+                      summary: "Windows dev server",
+                      value: {
+                        name: "dev-app-02",
+                        environment: "dev",
+                        template: "windows-2022",
+                        size: "Standard_D2s_v5",
+                        location: "uksouth",
+                        tags: { team: "backend", project: "alpha", "cost-centre": "CC-5678" }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            responses: {
+              "202": {
+                description: "✅ VM build request accepted and queued",
+                content: {
+                  "application/json": {
+                    schema: { $ref: "#/components/schemas/RequestAccepted" },
+                    example: {
+                      requestId: "req-8a3f92d1",
+                      status: "pending",
+                      message: "Your VM build request for 'prod-web-01' has been accepted and is queued for processing.",
+                      trackingUrl: "https://api.company.com/v2/self-service/requests/req-8a3f92d1",
+                      estimatedDuration: "25-35 minutes",
+                      submittedAt: "2024-01-15T10:00:00Z"
+                    }
+                  }
+                }
+              },
+              "400": { $ref: "#/components/responses/ValidationError" },
+              "403": { $ref: "#/components/responses/Forbidden" },
+              "429": { $ref: "#/components/responses/QuotaExceeded" }
+            },
+            security: [{ AzureAD: ["VMs.Write"] }]
+          }
+        },
+        "/vms/{vmId}/operations": {
+          post: {
+            tags: ["⚙️ VM Operations"],
+            summary: "Perform a day-2 operation on a VM",
+            operationId: "performVmOperation",
+            description: `Supported operations:
+
+| Operation | Description | Requires Justification (Prod) |
+|-----------|-------------|-------------------------------|
+| \`resize\` | Change VM size | ✅ Yes |
+| \`add-disk\` | Attach new data disk | No |
+| \`remove-disk\` | Detach / delete disk | No |
+| \`start\` | Power on | No |
+| \`stop\` | Gracefully shut down | ✅ Yes (Prod) |
+| \`restart\` | Reboot | ✅ Yes (Prod) |
+| \`delete\` | Decommission VM | ✅ Always |
+
+Operations that require justification are **configurable per environment in the DB**.`,
+            parameters: [
+              {
+                name: "vmId",
+                in: "path",
+                required: true,
+                description: "VM resource identifier",
+                schema: { type: "string" },
+                example: "prod-web-01"
+              }
+            ],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/VmOperationRequest" },
+                  examples: {
+                    resize: {
+                      summary: "Resize VM",
+                      value: { operation: "resize", parameters: { newSize: "Standard_D8s_v5" }, justification: "Memory pressure detected, scaling up for Q4" }
+                    },
+                    add_disk: {
+                      summary: "Add data disk",
+                      value: { operation: "add-disk", parameters: { sizeGb: 256, type: "Premium_LRS", purpose: "database-logs" } }
+                    },
+                    stop: {
+                      summary: "Stop VM",
+                      value: { operation: "stop", justification: "Scheduled maintenance window 02:00–04:00 UTC" }
+                    },
+                    delete: {
+                      summary: "Delete VM",
+                      value: { operation: "delete", parameters: { deleteDisks: true, deleteNic: true, deletePublicIp: true }, justification: "Project Alpha decommissioned per ticket INC0012345" }
+                    },
+                    scheduled: {
+                      summary: "Scheduled restart",
+                      value: { operation: "restart", justification: "OS patch application", scheduledAt: "2024-01-16T02:00:00Z" }
+                    }
+                  }
+                }
+              }
+            },
+            responses: {
+              "202": {
+                description: "✅ Operation request accepted",
+                content: { "application/json": { schema: { $ref: "#/components/schemas/RequestAccepted" } } }
+              },
+              "400": { $ref: "#/components/responses/ValidationError" },
+              "404": { $ref: "#/components/responses/NotFound" },
+              "409": { $ref: "#/components/responses/Conflict" }
+            },
+            security: [{ AzureAD: ["VMs.Write"] }]
+          }
+        },
+        "/vms/{vmId}/operations/history": {
+          get: {
+            tags: ["⚙️ VM Operations"],
+            summary: "Get operation history for a VM",
+            operationId: "getVmOperationHistory",
+            parameters: [
+              { name: "vmId", in: "path", required: true, schema: { type: "string" }, example: "prod-web-01" },
+              { name: "limit", in: "query", schema: { type: "integer", default: 20, maximum: 100 } }
+            ],
+            responses: {
+              "200": {
+                description: "Operation history",
+                content: {
+                  "application/json": {
+                    example: {
+                      vmId: "prod-web-01",
+                      operations: [
+                        { requestId: "req-9c4a12f0", operation: "resize", status: "completed", submittedBy: "pradeep@company.com", submittedAt: "2024-01-14T09:00:00Z", completedAt: "2024-01-14T09:12:00Z" },
+                        { requestId: "req-7b2e88c1", operation: "add-disk", status: "completed", submittedBy: "pradeep@company.com", submittedAt: "2024-01-10T14:30:00Z", completedAt: "2024-01-10T14:34:00Z" }
+                      ]
+                    }
+                  }
+                }
+              },
+              "404": { $ref: "#/components/responses/NotFound" }
+            },
+            security: [{ AzureAD: ["VMs.Read"] }]
+          }
+        },
+        "/batches": {
+          post: {
+            tags: ["📦 Batch Requests"],
+            summary: "Submit a batch of VM requests",
+            operationId: "submitBatch",
+            description: `Submit up to **50 tasks** in a single call. Supports:
+- Multiple \`vm-build\` requests (e.g. full 3-tier environment)
+- Multiple \`vm-operation\` requests (e.g. resize all app servers)
+- Mixed builds and operations
+
+Use **\`dependsOn\`** to sequence tasks — e.g. build DB tier before app tier.
+
+**All tasks are validated before any are queued.** If any task fails, the full batch is rejected with field-level errors per task.`,
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/BatchRequest" },
+                  examples: {
+                    three_tier: {
+                      summary: "3-tier environment build",
+                      value: {
+                        name: "Project Alpha — Production Environment",
+                        description: "Full stack provisioning: web + app + db tiers",
+                        notifyOnCompletion: true,
+                        tasks: [
+                          { taskId: "db-01", type: "vm-build", payload: { name: "prod-db-01", environment: "production", template: "windows-2022", size: "Standard_E16s_v5", location: "uksouth", tags: { team: "platform", project: "alpha", "cost-centre": "CC-1234", "data-classification": "confidential" }, justification: "Project Alpha production rollout" } },
+                          { taskId: "app-01", type: "vm-build", dependsOn: ["db-01"], payload: { name: "prod-app-01", environment: "production", template: "ubuntu-22-04-lts", size: "Standard_D8s_v5", location: "uksouth", tags: { team: "platform", project: "alpha", "cost-centre": "CC-1234", "data-classification": "internal" }, justification: "Project Alpha production rollout" } },
+                          { taskId: "app-02", type: "vm-build", dependsOn: ["db-01"], payload: { name: "prod-app-02", environment: "production", template: "ubuntu-22-04-lts", size: "Standard_D8s_v5", location: "uksouth", tags: { team: "platform", project: "alpha", "cost-centre": "CC-1234", "data-classification": "internal" }, justification: "Project Alpha production rollout" } },
+                          { taskId: "web-01", type: "vm-build", dependsOn: ["app-01", "app-02"], payload: { name: "prod-web-01", environment: "production", template: "ubuntu-22-04-lts", size: "Standard_D4s_v5", location: "uksouth", tags: { team: "platform", project: "alpha", "cost-centre": "CC-1234", "data-classification": "public" }, justification: "Project Alpha production rollout" } }
+                        ]
+                      }
+                    },
+                    bulk_resize: {
+                      summary: "Resize all app servers",
+                      value: {
+                        name: "Scale up app tier — Q4 campaign",
+                        tasks: [
+                          { taskId: "resize-app-01", type: "vm-operation", payload: { vmId: "prod-app-01", operation: "resize", parameters: { newSize: "Standard_D16s_v5" }, justification: "Q4 traffic increase" } },
+                          { taskId: "resize-app-02", type: "vm-operation", payload: { vmId: "prod-app-02", operation: "resize", parameters: { newSize: "Standard_D16s_v5" }, justification: "Q4 traffic increase" } }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            responses: {
+              "202": {
+                description: "✅ Batch accepted",
+                content: {
+                  "application/json": {
+                    example: { batchId: "batch-4f91a2c3", taskCount: 4, status: "pending", trackingUrl: "https://api.company.com/v2/self-service/batches/batch-4f91a2c3", submittedAt: "2024-01-15T10:00:00Z" }
+                  }
+                }
+              },
+              "400": { $ref: "#/components/responses/ValidationError" }
+            },
+            security: [{ AzureAD: ["VMs.Write"] }]
+          },
+          get: {
+            tags: ["📦 Batch Requests"],
+            summary: "List my batches",
+            operationId: "listMyBatches",
+            parameters: [
+              { name: "status", in: "query", schema: { type: "string", enum: ["pending", "in-progress", "completed", "partially-failed", "failed"] } },
+              { name: "limit", in: "query", schema: { type: "integer", default: 20, maximum: 100 } }
+            ],
+            responses: { "200": { description: "List of batches" } },
+            security: [{ AzureAD: ["VMs.Read"] }]
+          }
+        },
+        "/batches/{batchId}": {
+          get: {
+            tags: ["📦 Batch Requests"],
+            summary: "Get batch status",
+            operationId: "getBatchStatus",
+            description: "Returns overall progress and individual task status breakdown.",
+            parameters: [{ name: "batchId", in: "path", required: true, schema: { type: "string" }, example: "batch-4f91a2c3" }],
+            responses: {
+              "200": {
+                description: "Batch status with task breakdown",
+                content: {
+                  "application/json": {
+                    example: {
+                      batchId: "batch-4f91a2c3",
+                      name: "Project Alpha — Production Environment",
+                      status: "in-progress",
+                      summary: { total: 4, pending: 2, inProgress: 1, completed: 1, failed: 0 },
+                      tasks: [
+                        { taskId: "db-01", requestId: "req-a1b2c3d4", status: "completed", trackingUrl: "https://api.company.com/v2/self-service/requests/req-a1b2c3d4" },
+                        { taskId: "app-01", requestId: "req-e5f6a7b8", status: "in-progress", trackingUrl: "https://api.company.com/v2/self-service/requests/req-e5f6a7b8" },
+                        { taskId: "app-02", requestId: "req-c9d0e1f2", status: "in-progress", trackingUrl: "https://api.company.com/v2/self-service/requests/req-c9d0e1f2" },
+                        { taskId: "web-01", requestId: null, status: "pending", trackingUrl: null }
+                      ]
+                    }
+                  }
+                }
+              },
+              "404": { $ref: "#/components/responses/NotFound" }
+            },
+            security: [{ AzureAD: ["VMs.Read"] }]
+          }
+        },
+        "/requests/{requestId}": {
+          get: {
+            tags: ["📊 Status & Tracking"],
+            summary: "Get request status",
+            operationId: "getRequestStatus",
+            description: `Poll to track any provisioning or operation request.
+
+**Status lifecycle:** \`pending\` → \`in-progress\` → \`completed\` | \`failed\` | \`cancelled\`
+
+Response includes named step breakdown, % progress, estimated completion, and (on failure) error details with support reference.`,
+            parameters: [{ name: "requestId", in: "path", required: true, schema: { type: "string" }, example: "req-8a3f92d1" }],
+            responses: {
+              "200": {
+                description: "Request status",
+                content: {
+                  "application/json": {
+                    schema: { $ref: "#/components/schemas/RequestStatusResponse" },
+                    examples: {
+                      in_progress: {
+                        summary: "VM build in progress (65%)",
+                        value: {
+                          requestId: "req-8a3f92d1",
+                          type: "vm-build",
+                          status: "in-progress",
+                          progress: 65,
+                          currentStep: "Configuring OS",
+                          steps: [
+                            { name: "Resource Allocation", status: "completed", completedAt: "2024-01-15T10:02:00Z" },
+                            { name: "OS Deployment", status: "completed", completedAt: "2024-01-15T10:08:00Z" },
+                            { name: "Configuring OS", status: "in-progress", startedAt: "2024-01-15T10:08:00Z" },
+                            { name: "Domain Join", status: "pending" },
+                            { name: "Post-build Validation", status: "pending" }
+                          ],
+                          submittedAt: "2024-01-15T10:00:00Z",
+                          startedAt: "2024-01-15T10:01:30Z",
+                          estimatedCompletionAt: "2024-01-15T10:28:00Z"
+                        }
+                      },
+                      completed: {
+                        summary: "VM build completed",
+                        value: {
+                          requestId: "req-8a3f92d1",
+                          type: "vm-build",
+                          status: "completed",
+                          progress: 100,
+                          steps: [
+                            { name: "Resource Allocation", status: "completed" },
+                            { name: "OS Deployment", status: "completed" },
+                            { name: "Configuring OS", status: "completed" },
+                            { name: "Domain Join", status: "completed" },
+                            { name: "Post-build Validation", status: "completed" }
+                          ],
+                          result: { vmId: "prod-web-01", resourceId: "/subscriptions/xxx/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/prod-web-01", privateIp: "10.0.1.45" },
+                          submittedAt: "2024-01-15T10:00:00Z",
+                          completedAt: "2024-01-15T10:26:00Z"
+                        }
+                      },
+                      failed: {
+                        summary: "Request failed",
+                        value: {
+                          requestId: "req-8a3f92d1",
+                          type: "vm-build",
+                          status: "failed",
+                          progress: 40,
+                          currentStep: "Domain Join",
+                          errorDetails: { code: "DOMAIN_JOIN_FAILED", message: "Unable to join domain — network connectivity to DC timed out", supportRef: "SR-2024-01-15-00842" },
+                          submittedAt: "2024-01-15T10:00:00Z",
+                          completedAt: "2024-01-15T10:14:00Z"
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "404": { $ref: "#/components/responses/NotFound" }
+            },
+            security: [{ AzureAD: ["VMs.Read"] }]
+          }
+        },
+        "/requests": {
+          get: {
+            tags: ["📊 Status & Tracking"],
+            summary: "List my requests",
+            operationId: "listMyRequests",
+            description: "Returns all requests submitted by the authenticated user, newest first.",
+            parameters: [
+              { name: "status", in: "query", schema: { type: "string", enum: ["pending", "in-progress", "completed", "failed", "cancelled"] }, description: "Filter by status" },
+              { name: "limit", in: "query", schema: { type: "integer", default: 20, maximum: 100 } },
+              { name: "page", in: "query", schema: { type: "integer", default: 1 } }
+            ],
+            responses: { "200": { description: "Paginated request list" } },
+            security: [{ AzureAD: ["VMs.Read"] }]
+          }
+        },
+        "/requests/{requestId}/cancel": {
+          post: {
+            tags: ["📊 Status & Tracking"],
+            summary: "Cancel a pending request",
+            operationId: "cancelRequest",
+            description: "Only requests in `pending` status can be cancelled. Returns `409 Conflict` if the request has already started.",
+            parameters: [{ name: "requestId", in: "path", required: true, schema: { type: "string" }, example: "req-8a3f92d1" }],
+            requestBody: {
+              content: { "application/json": { schema: { type: "object", properties: { reason: { type: "string", description: "Reason for cancellation" } } }, example: { reason: "Team decision reversed, VM no longer needed" } } }
+            },
+            responses: {
+              "200": { description: "✅ Request cancelled" },
+              "409": { $ref: "#/components/responses/Conflict" },
+              "404": { $ref: "#/components/responses/NotFound" }
+            },
+            security: [{ AzureAD: ["VMs.Write"] }]
+          }
+        },
+        "/catalogue/vm-sizes": {
+          get: {
+            tags: ["📋 Catalogue"],
+            summary: "List available VM sizes",
+            operationId: "listVmSizes",
+            description: "Browse all VM sizes available for provisioning, filtered by environment and workload type. Use this to pick a valid `size` before submitting a build request.",
+            parameters: [
+              { name: "environment", in: "query", schema: { type: "string", enum: ["dev", "test", "uat", "production"] } },
+              { name: "workloadType", in: "query", schema: { type: "string", enum: ["general", "compute", "memory", "storage"] } }
+            ],
+            responses: {
+              "200": {
+                description: "VM size catalogue",
+                content: {
+                  "application/json": {
+                    example: {
+                      sizes: [
+                        { id: "Standard_D4s_v5", displayName: "D4s v5 — General Purpose (4 vCPU / 16 GB RAM)", vcpus: 4, memoryGb: 16, workloadType: "general", estimatedMonthlyCost: 142.50 },
+                        { id: "Standard_D8s_v5", displayName: "D8s v5 — General Purpose (8 vCPU / 32 GB RAM)", vcpus: 8, memoryGb: 32, workloadType: "general", estimatedMonthlyCost: 285.00 },
+                        { id: "Standard_E16s_v5", displayName: "E16s v5 — Memory Optimised (16 vCPU / 128 GB RAM)", vcpus: 16, memoryGb: 128, workloadType: "memory", estimatedMonthlyCost: 980.00 }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            security: [{ AzureAD: ["VMs.Read"] }]
+          }
+        },
+        "/catalogue/templates": {
+          get: {
+            tags: ["📋 Catalogue"],
+            summary: "List available OS templates",
+            operationId: "listTemplates",
+            description: "Browse all approved OS images. Use the `id` as the `template` field in your build request.",
+            parameters: [
+              { name: "osType", in: "query", schema: { type: "string", enum: ["linux", "windows"] } }
+            ],
+            responses: {
+              "200": {
+                description: "Template catalogue",
+                content: {
+                  "application/json": {
+                    example: {
+                      templates: [
+                        { id: "ubuntu-22-04-lts", displayName: "Ubuntu 22.04 LTS (Jammy Jellyfish)", osType: "linux", version: "22.04", description: "Recommended for web and application servers" },
+                        { id: "ubuntu-20-04-lts", displayName: "Ubuntu 20.04 LTS (Focal Fossa)", osType: "linux", version: "20.04", description: "LTS — supported until April 2025" },
+                        { id: "windows-2022", displayName: "Windows Server 2022 Datacenter", osType: "windows", version: "2022", description: "Recommended for Windows workloads" },
+                        { id: "rhel-9", displayName: "Red Hat Enterprise Linux 9", osType: "linux", version: "9.3", description: "For RHEL-licensed workloads" }
+                      ]
+                    }
+                  }
+                }
+              }
+            },
+            security: [{ AzureAD: ["VMs.Read"] }]
+          }
+        }
+      },
+      components: {
+        securitySchemes: {
+          AzureAD: {
+            type: "oauth2",
+            description: "Azure Active Directory OAuth2. Use your tenant's authorization endpoint.",
+            flows: {
+              authorizationCode: {
+                authorizationUrl: "https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/authorize",
+                tokenUrl: "https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token",
+                scopes: {
+                  "api://self-service/VMs.Read": "Read VM data and request status",
+                  "api://self-service/VMs.Write": "Submit VM builds and operations",
+                  "api://self-service/VMs.Admin": "Full administrative access"
+                }
+              }
+            }
+          }
+        },
+        schemas: {
+          VmBuildRequest: {
+            type: "object",
+            required: ["name", "environment", "template", "size"],
+            properties: {
+              name: { type: "string", minLength: 3, maxLength: 15, description: "VM hostname. Must match environment naming convention.", example: "prod-web-01" },
+              environment: { type: "string", enum: ["dev", "test", "uat", "production"] },
+              template: { type: "string", description: "OS template ID from GET /catalogue/templates", example: "ubuntu-22-04-lts" },
+              size: { type: "string", description: "Azure VM size from GET /catalogue/vm-sizes", example: "Standard_D4s_v5" },
+              location: { type: "string", description: "Azure region. Defaults to uksouth.", default: "uksouth", enum: ["uksouth", "ukwest"] },
+              subscriptionId: { type: "string", description: "Target subscription ID. Defaults to team default." },
+              tags: { type: "object", additionalProperties: { type: "string" }, description: "Azure resource tags. Required tags enforced by DB config.", example: { team: "platform", project: "ecommerce", "cost-centre": "CC-1234" } },
+              disks: { type: "array", description: "Additional data disks (OS disk auto-provisioned)", items: { $ref: "#/components/schemas/DiskSpec" } },
+              network: { $ref: "#/components/schemas/NetworkConfig" },
+              justification: { type: "string", maxLength: 500, description: "Business justification. Required for production." }
+            }
+          },
+          DiskSpec: {
+            type: "object",
+            required: ["sizeGb"],
+            properties: {
+              sizeGb: { type: "integer", description: "Disk size GB. Must match allowed sizes in DB config.", enum: [32, 64, 128, 256, 512, 1024, 2048] },
+              type: { type: "string", default: "Premium_LRS", enum: ["Standard_LRS", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS"] },
+              purpose: { type: "string", description: "Label: data / database / logs etc.", example: "database" }
+            }
+          },
+          NetworkConfig: {
+            type: "object",
+            properties: {
+              vnetName: { type: "string" },
+              subnetName: { type: "string" },
+              privateIpAllocation: { type: "string", enum: ["Dynamic", "Static"], default: "Dynamic" }
+            }
+          },
+          VmOperationRequest: {
+            type: "object",
+            required: ["operation"],
+            description: "Discriminated by the `operation` field. Each operation type has its own parameters.",
+            properties: {
+              operation: { type: "string", enum: ["resize", "add-disk", "remove-disk", "start", "stop", "restart", "delete"], description: "Operation type" },
+              parameters: { type: "object", description: "Operation-specific parameters (see examples)" },
+              justification: { type: "string", maxLength: 500, description: "Required for some operations (DB-configurable per environment)" },
+              scheduledAt: { type: "string", format: "date-time", description: "Schedule execution at a specific time. If omitted, executes immediately." }
+            }
+          },
+          BatchRequest: {
+            type: "object",
+            required: ["name", "tasks"],
+            properties: {
+              name: { type: "string", description: "Friendly name for this batch" },
+              description: { type: "string" },
+              tasks: { type: "array", maxItems: 50, items: { $ref: "#/components/schemas/BatchTask" } },
+              notifyOnCompletion: { type: "boolean", default: true, description: "Email notification when all tasks complete" }
+            }
+          },
+          BatchTask: {
+            type: "object",
+            required: ["taskId", "type", "payload"],
+            properties: {
+              taskId: { type: "string", description: "Your reference ID — used in status responses" },
+              type: { type: "string", enum: ["vm-build", "vm-operation"] },
+              payload: { type: "object", description: "VmBuildRequest or VmOperationRequest body" },
+              dependsOn: { type: "array", items: { type: "string" }, description: "Task IDs that must complete before this task starts" }
+            }
+          },
+          RequestAccepted: {
+            type: "object",
+            properties: {
+              requestId: { type: "string", example: "req-8a3f92d1" },
+              status: { type: "string", enum: ["pending"] },
+              message: { type: "string" },
+              trackingUrl: { type: "string", description: "Direct URL to poll for status" },
+              estimatedDuration: { type: "string", example: "25-35 minutes" },
+              submittedAt: { type: "string", format: "date-time" }
+            }
+          },
+          RequestStatusResponse: {
+            type: "object",
+            properties: {
+              requestId: { type: "string" },
+              type: { type: "string", enum: ["vm-build", "vm-operation"] },
+              status: { type: "string", enum: ["pending", "in-progress", "completed", "failed", "cancelled"] },
+              progress: { type: "integer", minimum: 0, maximum: 100, description: "Completion percentage" },
+              currentStep: { type: "string" },
+              steps: { type: "array", items: { type: "object", properties: { name: { type: "string" }, status: { type: "string" }, startedAt: { type: "string", format: "date-time" }, completedAt: { type: "string", format: "date-time" } } } },
+              result: { type: "object", description: "Present on completion — includes VM resource ID, IP, etc." },
+              errorDetails: { type: "object", properties: { code: { type: "string" }, message: { type: "string" }, supportRef: { type: "string" } } },
+              submittedAt: { type: "string", format: "date-time" },
+              completedAt: { type: "string", format: "date-time" },
+              estimatedCompletionAt: { type: "string", format: "date-time" }
+            }
+          },
+          ErrorResponse: {
+            type: "object",
+            properties: {
+              error: { type: "string", description: "Machine-readable error type" },
+              message: { type: "string", description: "Human-readable summary" },
+              details: { type: "array", items: { type: "object", properties: { field: { type: "string" }, code: { type: "string" }, message: { type: "string" } } } },
+              supportRef: { type: "string", description: "Unique ID for support tracing" }
+            }
+          }
+        },
+        responses: {
+          ValidationError: {
+            description: "Business rule validation failed",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+                example: {
+                  error: "VALIDATION_ERROR",
+                  message: "Request failed 3 business validation rule(s). Please review the details and resubmit.",
+                  details: [
+                    { field: "size", code: "SIZE_NOT_ALLOWED", message: "VM size 'Standard_B2s' is not available in the 'production' environment. Allowed sizes: Standard_D4s_v5, Standard_D8s_v5, Standard_D16s_v5" },
+                    { field: "name", code: "NAMING_CONVENTION", message: "VM name 'web-01' does not match the required pattern for 'production' environment. Pattern: ^prod-[a-z][a-z0-9-]{2,10}$" },
+                    { field: "tags", code: "MISSING_REQUIRED_TAGS", message: "Missing required tags: cost-centre, data-classification" }
+                  ],
+                  supportRef: "SR-2024-01-15-00842"
+                }
+              }
+            }
+          },
+          Forbidden: {
+            description: "Insufficient permissions",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" }, example: { error: "FORBIDDEN", message: "You are not authorised to provision VMs in the production environment.", supportRef: "SR-2024-01-15-00843" } } }
+          },
+          NotFound: {
+            description: "Resource not found",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" }, example: { error: "NOT_FOUND", message: "Request 'req-8a3f92d1' not found.", supportRef: "SR-2024-01-15-00844" } } }
+          },
+          Conflict: {
+            description: "Operation not allowed in current state",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" }, example: { error: "CONFLICT", message: "Cannot perform 'start' on a VM in 'running' state. Allowed operations: stop, restart, resize, add-disk, remove-disk, delete", supportRef: "SR-2024-01-15-00845" } } }
+          },
+          QuotaExceeded: {
+            description: "Team VM quota exceeded",
+            content: { "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" }, example: { error: "QUOTA_EXCEEDED", message: "Team quota of 10 VMs in 'dev' has been reached. Request a quota increase via the Service Portal.", supportRef: "SR-2024-01-15-00846" } } }
+          }
+        }
+      }
+    };
+
+    window.onload = () => {
+      SwaggerUIBundle({
+        spec,
+        dom_id: "#swagger-ui",
+        deepLinking: true,
+        presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+        layout: "StandaloneLayout",
+        defaultModelsExpandDepth: 1,
+        defaultModelExpandDepth: 2,
+        docExpansion: "list",
+        filter: true,
+        showExtensions: false,
+        showCommonExtensions: false,
+        tryItOutEnabled: false,
+        syntaxHighlight: { activate: true, theme: "monokai" },
+        requestInterceptor: (req) => req,
+      });
+    };
+
+    function scrollToTag(tagFragment) {
+      setTimeout(() => {
+        const all = document.querySelectorAll('.opblock-tag');
+        for (const el of all) {
+          if (el.textContent.includes(tagFragment)) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (!el.classList.contains('is-open')) el.click();
+            break;
+          }
+        }
+      }, 200);
+    }
+  </script>
+</body>
+</html>
