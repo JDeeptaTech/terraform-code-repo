@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Application Configuration — DB Schema | Confluence</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --cf-blue:       #0052CC;
+    --cf-blue-light: #DEEBFF;
+    --cf-blue-mid:   #0065FF;
+    --cf-text:       #172B4D;
+    --cf-subtle:     #5E6C84;
+    --cf-border:     #DFE1E6;
+    --cf-bg:         #F4F5F7;
+    --cf-white:      #FFFFFF;
+    --cf-green:      #00875A;
+    --cf-green-bg:   #E3FCEF;
+    --cf-red:        #DE350B;
+    --cf-red-bg:     #FFEBE6;
+    --cf-yellow-bg:  #FFFAE6;
+    --cf-yellow:     #FF8B00;
+    --radius: 3px;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 14px; line-height: 1.714;
+    color: var(--cf-text); background: var(--cf-bg);
+  }
+
+  /* ── NAV ── */
+  .cf-navbar {
+    background: var(--cf-blue); height: 56px;
+    display: flex; align-items: center; padding: 0 20px; gap: 16px;
+    position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 2px 4px rgba(0,0,0,.2);
+  }
+  .cf-navbar-logo { display: flex; align-items: center; gap: 8px; color: white; font-weight: 700; font-size: 16px; text-decoration: none; }
+  .cf-navbar-logo svg { width: 28px; height: 28px; }
+  .cf-navbar-items { display: flex; gap: 4px; margin-left: 8px; }
+  .cf-navbar-item { color: rgba(255,255,255,.9); font-size: 13px; font-weight: 500; padding: 6px 10px; border-radius: var(--radius); text-decoration: none; }
+  .cf-navbar-item:hover { background: rgba(255,255,255,.15); }
+  .cf-navbar-search { margin-left: auto; background: rgba(255,255,255,.2); border: 1px solid rgba(255,255,255,.3); border-radius: 3px; padding: 5px 12px; color: white; font-size: 13px; width: 200px; outline: none; }
+  .cf-navbar-search::placeholder { color: rgba(255,255,255,.7); }
+  .cf-avatar { width: 32px; height: 32px; border-radius: 50%; background: #FF8F73; color: white; font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; margin-left: 8px; cursor: pointer; flex-shrink: 0; }
+
+  /* ── LAYOUT ── */
+  .cf-layout { display: flex; max-width: 1400px; margin: 0 auto; padding: 0 24px; }
+
+  /* ── LEFT SIDEBAR ── */
+  .cf-sidebar { width: 240px; flex-shrink: 0; padding: 24px 0; }
+  .cf-sidebar-space { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--cf-subtle); padding: 0 12px 8px; margin-bottom: 4px; }
+  .cf-sidebar-item { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: var(--radius); font-size: 13px; color: var(--cf-text); text-decoration: none; }
+  .cf-sidebar-item:hover { background: var(--cf-border); }
+  .cf-sidebar-item.active { background: var(--cf-blue-light); color: var(--cf-blue); font-weight: 500; }
+  .cf-sidebar-item .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--cf-subtle); flex-shrink: 0; }
+  .cf-sidebar-item.active .dot { background: var(--cf-blue); }
+  .cf-sidebar-divider { border: none; border-top: 1px solid var(--cf-border); margin: 12px; }
+
+  /* ── MAIN ── */
+  .cf-main { flex: 1; min-width: 0; padding: 24px 32px 80px; }
+
+  /* ── BREADCRUMB ── */
+  .cf-breadcrumb { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--cf-subtle); margin-bottom: 16px; }
+  .cf-breadcrumb a { color: var(--cf-subtle); text-decoration: none; }
+  .cf-breadcrumb a:hover { color: var(--cf-blue); text-decoration: underline; }
+  .cf-breadcrumb-sep { color: var(--cf-border); }
+
+  /* ── PAGE HEADER ── */
+  .cf-page-title { font-size: 28px; font-weight: 700; color: var(--cf-text); line-height: 1.25; margin-bottom: 8px; }
+  .cf-page-meta { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--cf-subtle); margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--cf-border); }
+  .cf-meta-item { display: flex; align-items: center; gap: 5px; }
+  .cf-mini-avatar { width: 20px; height: 20px; border-radius: 50%; background: #FF8F73; color: white; font-weight: 700; font-size: 9px; display: flex; align-items: center; justify-content: center; }
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 3px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+  .badge.green  { background: var(--cf-green-bg); color: var(--cf-green); }
+  .badge.blue   { background: var(--cf-blue-light); color: var(--cf-blue); }
+  .badge.yellow { background: var(--cf-yellow-bg); color: var(--cf-yellow); }
+  .badge.red    { background: var(--cf-red-bg); color: var(--cf-red); }
+
+  /* ── ACTIONS ── */
+  .cf-actions { display: flex; gap: 8px; margin-bottom: 28px; }
+  .cf-btn { padding: 6px 14px; border-radius: var(--radius); font-size: 13px; font-weight: 500; cursor: pointer; border: none; display: flex; align-items: center; gap: 6px; }
+  .cf-btn-primary { background: var(--cf-blue); color: white; }
+  .cf-btn-secondary { background: var(--cf-bg); color: var(--cf-text); border: 1px solid var(--cf-border); }
+  .cf-btn-secondary:hover { background: var(--cf-border); }
+
+  /* ── TOC ── */
+  .cf-toc { background: var(--cf-bg); border: 1px solid var(--cf-border); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 32px; display: inline-block; min-width: 280px; }
+  .cf-toc-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--cf-subtle); margin-bottom: 10px; }
+  .cf-toc ol { padding-left: 16px; }
+  .cf-toc li { margin: 4px 0; }
+  .cf-toc a { font-size: 13px; color: var(--cf-blue); text-decoration: none; }
+  .cf-toc a:hover { text-decoration: underline; }
+
+  /* ── HEADINGS ── */
+  h2 { font-size: 20px; font-weight: 700; color: var(--cf-text); margin: 40px 0 12px; padding-bottom: 8px; border-bottom: 2px solid var(--cf-border); }
+  h3 { font-size: 16px; font-weight: 600; color: var(--cf-text); margin: 28px 0 10px; }
+  p  { margin-bottom: 12px; line-height: 1.7; }
+
+  /* ── PANELS ── */
+  .cf-panel { border-radius: var(--radius); padding: 14px 16px; margin: 20px 0; display: flex; gap: 12px; align-items: flex-start; border-left: 3px solid; }
+  .cf-panel.info   { background: var(--cf-blue-light);  border-color: var(--cf-blue);   }
+  .cf-panel.note   { background: var(--cf-yellow-bg);   border-color: var(--cf-yellow); }
+  .cf-panel.ok     { background: var(--cf-green-bg);    border-color: var(--cf-green);  }
+  .cf-panel.warn   { background: var(--cf-red-bg);      border-color: var(--cf-red);    }
+  .cf-panel-icon   { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+  .cf-panel-body   { font-size: 13px; line-height: 1.6; }
+  .cf-panel-body strong { font-weight: 600; display: block; margin-bottom: 2px; }
+
+  /* ── CODE ── */
+  .code-wrap { margin: 16px 0; border-radius: var(--radius); overflow: hidden; }
+  .code-header { background: #2D3748; color: #A0AEC0; padding: 6px 14px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; display: flex; justify-content: space-between; align-items: center; }
+  .code-copy { background: rgba(255,255,255,.1); border: none; color: #A0AEC0; padding: 2px 8px; border-radius: 2px; font-size: 10px; cursor: pointer; font-weight: 500; }
+  .code-copy:hover { background: rgba(255,255,255,.2); color: white; }
+  pre { background: #1D2125; color: #D4D4D4; padding: 16px 18px; overflow-x: auto; font-family: 'SFMono-Regular', Consolas, Menlo, monospace; font-size: 12.5px; line-height: 1.65; tab-size: 4; }
+  .kw  { color: #569CD6; }
+  .str { color: #CE9178; }
+  .cm  { color: #6A9955; }
+  .fn  { color: #DCDCAA; }
+  .num { color: #B5CEA8; }
+  .key { color: #9CDCFE; }
+  code { background: #F4F5F7; border: 1px solid var(--cf-border); border-radius: 2px; padding: 1px 5px; font-family: 'SFMono-Regular', Consolas, Menlo, monospace; font-size: 12px; color: #DE350B; }
+
+  /* ── TABLES ── */
+  .cf-table-wrap { overflow-x: auto; margin: 16px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: var(--cf-bg); text-align: left; padding: 8px 12px; font-weight: 600; font-size: 12px; color: var(--cf-subtle); text-transform: uppercase; letter-spacing: .04em; border-bottom: 2px solid var(--cf-border); }
+  td { padding: 9px 12px; border-bottom: 1px solid var(--cf-border); vertical-align: top; line-height: 1.5; }
+  tr:hover td { background: #FAFBFC; }
+  .td-check { color: var(--cf-green); font-weight: 700; }
+  .td-warn  { color: var(--cf-red);   font-weight: 700; }
+
+  /* ── 2-COL CARDS ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+  .col-card { border: 1px solid var(--cf-border); border-radius: var(--radius); padding: 14px 16px; }
+  .col-card h4 { font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+  .col-card.good { border-color: var(--cf-green); }
+  .col-card.bad  { border-color: var(--cf-red); }
+  .col-card.good h4 { color: var(--cf-green); }
+  .col-card.bad  h4 { color: var(--cf-red); }
+
+  /* ── CONFIG_NAME DIAGRAM ── */
+  .cn-diagram { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 20px 0; }
+  .cn-card { background: white; border: 1px solid var(--cf-border); border-radius: 4px; padding: 12px 14px; }
+  .cn-card-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--cf-subtle); margin-bottom: 6px; }
+  .cn-card-name { font-size: 13px; font-weight: 600; color: var(--cf-blue); font-family: 'SFMono-Regular', Consolas, monospace; margin-bottom: 8px; }
+  .cn-card-keys { font-size: 11px; color: var(--cf-subtle); line-height: 1.7; font-family: 'SFMono-Regular', Consolas, monospace; }
+  .cn-card-keys .secret-key { color: #E65100; }
+  .cn-app-label { grid-column: 1 / -1; font-size: 12px; font-weight: 700; color: var(--cf-subtle); padding: 4px 0 2px; border-bottom: 1px solid var(--cf-border); margin-bottom: 4px; }
+
+  /* ── RIGHT OUTLINE ── */
+  .cf-outline { width: 200px; flex-shrink: 0; padding: 24px 0 24px 16px; position: sticky; top: 80px; align-self: flex-start; }
+  .cf-outline-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--cf-subtle); margin-bottom: 10px; }
+  .cf-outline a { display: block; font-size: 12px; color: var(--cf-subtle); text-decoration: none; padding: 3px 0 3px 8px; border-left: 2px solid var(--cf-border); }
+  .cf-outline a:hover, .cf-outline a.active { color: var(--cf-blue); border-color: var(--cf-blue); }
+  .cf-outline a.active { font-weight: 500; }
+
+  /* ── FOOTER ── */
+  .cf-footer { border-top: 1px solid var(--cf-border); margin-top: 48px; padding-top: 20px; font-size: 12px; color: var(--cf-subtle); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .cf-footer a { color: var(--cf-subtle); text-decoration: none; }
+  .cf-footer a:hover { text-decoration: underline; }
+
+  @media (max-width: 1024px) { .cf-outline { display: none; } }
+  @media (max-width: 768px)  { .cf-sidebar { display: none; } .cf-main { padding: 16px; } }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="cf-navbar">
+  <a class="cf-navbar-logo" href="#">
+    <svg viewBox="0 0 32 32" fill="none">
+      <path d="M6 26C6 26 9.5 18 16 14C22.5 10 28 12 28 12" stroke="white" stroke-width="3" stroke-linecap="round"/>
+      <path d="M6 6C6 6 9.5 14 16 18C22.5 22 28 20 28 20" stroke="rgba(255,255,255,.5)" stroke-width="3" stroke-linecap="round"/>
+    </svg>
+    Confluence
+  </a>
+  <div class="cf-navbar-items">
+    <a class="cf-navbar-item" href="#">Spaces</a>
+    <a class="cf-navbar-item" href="#">People</a>
+    <a class="cf-navbar-item" href="#">Templates</a>
+  </div>
+  <input class="cf-navbar-search" type="text" placeholder="🔍  Search Confluence">
+  <div class="cf-avatar">P</div>
+</nav>
+
+<div class="cf-layout">
+
+  <!-- LEFT SIDEBAR -->
+  <aside class="cf-sidebar">
+    <div class="cf-sidebar-space">Platform Engineering</div>
+    <a class="cf-sidebar-item" href="#"><span class="dot"></span> Overview</a>
+    <a class="cf-sidebar-item" href="#"><span class="dot"></span> Architecture</a>
+    <a class="cf-sidebar-item" href="#"><span class="dot"></span> Azure Subscriptions</a>
+    <a class="cf-sidebar-item" href="#"><span class="dot"></span> Terraform Modules</a>
+    <hr class="cf-sidebar-divider">
+    <div class="cf-sidebar-space">Data & Schemas</div>
+    <a class="cf-sidebar-item active" href="#"><span class="dot"></span> App Config Schema</a>
+    <a class="cf-sidebar-item" href="#"><span class="dot"></span> Secrets Management</a>
+    <a class="cf-sidebar-item" href="#"><span class="dot"></span> Feature Flags</a>
+    <hr class="cf-sidebar-divider">
+    <div class="cf-sidebar-space">Runbooks</div>
+    <a class="cf-sidebar-item" href="#"><span class="dot"></span> Deployment Guide</a>
+    <a class="cf-sidebar-item" href="#"><span class="dot"></span> Incident Response</a>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="cf-main">
+
+    <div class="cf-breadcrumb">
+      <a href="#">Platform Engineering</a>
+      <span class="cf-breadcrumb-sep">›</span>
+      <a href="#">Data & Schemas</a>
+      <span class="cf-breadcrumb-sep">›</span>
+      <span>App Config Schema</span>
+    </div>
+
+    <h1 class="cf-page-title">Application Configuration — DB Schema</h1>
+
+    <div class="cf-page-meta">
+      <div class="cf-meta-item"><div class="cf-mini-avatar">P</div> Pradeep</div>
+      <div class="cf-meta-item">📅 Feb 2026</div>
+      <div class="cf-meta-item"><span class="badge green">Current</span></div>
+      <div class="cf-meta-item"><span class="badge blue">v2.0</span></div>
+      <div class="cf-meta-item"><span class="badge yellow">Updated</span></div>
+      <div style="margin-left:auto; font-size:11px;">Internal · Platform Engineering</div>
+    </div>
+
+    <div class="cf-actions">
+      <button class="cf-btn cf-btn-primary">✏️ Edit</button>
+      <button class="cf-btn cf-btn-secondary">⭐ Watch</button>
+      <button class="cf-btn cf-btn-secondary">📋 Copy link</button>
+      <button class="cf-btn cf-btn-secondary">⋯ More</button>
+    </div>
+
+    <div class="cf-panel info">
+      <div class="cf-panel-icon">ℹ️</div>
+      <div class="cf-panel-body">
+        <strong>v2.0 — What changed from v1.0</strong>
+        Added <code>config_name</code> column to allow multiple named configs per app/environment (e.g. <code>database</code>, <code>cache</code>, <code>feature-flags</code>). Removed separate <code>secret_refs</code> column — Key Vault URIs now live directly inside the <code>config</code> JSONB alongside regular values.
+      </div>
+    </div>
+
+    <!-- TOC -->
+    <div class="cf-toc">
+      <div class="cf-toc-title">On this page</div>
+      <ol>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#design">Design Principles</a></li>
+        <li><a href="#schema">Schema Definition</a></li>
+        <li><a href="#config-name">Using config_name</a></li>
+        <li><a href="#columns">Column Reference</a></li>
+        <li><a href="#sample">Sample Data</a></li>
+        <li><a href="#queries">Common Query Patterns</a></li>
+        <li><a href="#jsonb">JSONB Operator Reference</a></li>
+        <li><a href="#secrets">Secret Handling</a></li>
+        <li><a href="#fastapi">FastAPI Integration</a></li>
+        <li><a href="#ansible">Ansible / AAP Integration</a></li>
+        <li><a href="#decisions">Design Decisions</a></li>
+        <li><a href="#future">Future Extensions</a></li>
+      </ol>
+    </div>
+
+    <!-- ── OVERVIEW ── -->
+    <h2 id="overview">Overview</h2>
+    <p>
+      Single PostgreSQL table for storing application configurations across multiple environments
+      (<code>dev</code>, <code>test</code>, <code>uat</code>, <code>prod</code>).
+      The <code>config_name</code> column allows each application to have multiple
+      named config groups — keeping concerns separated without multiplying tables.
+      Azure Key Vault URIs are stored directly inside the <code>config</code> JSONB and
+      resolved at runtime by the application or Ansible.
+    </p>
+
+    <!-- ── DESIGN PRINCIPLES ── -->
+    <h2 id="design">Design Principles</h2>
+    <div class="cf-table-wrap">
+      <table>
+        <thead><tr><th>Principle</th><th>Detail</th></tr></thead>
+        <tbody>
+          <tr><td>🗂️ <strong>Single table</strong></td><td>No joins, minimal ops overhead, easy to reason about</td></tr>
+          <tr><td>🏷️ <strong>config_name grouping</strong></td><td>One row per logical concern — <code>database</code>, <code>cache</code>, <code>feature-flags</code>, <code>integrations</code></td></tr>
+          <tr><td>📦 <strong>JSONB config column</strong></td><td>Flexible, schema-free — no DB migrations when config structures change</td></tr>
+          <tr><td>🔒 <strong>Vault URIs in-place</strong></td><td>Key Vault URIs live alongside regular values in <code>config</code>. Resolved at startup by app / Ansible</td></tr>
+          <tr><td>📝 <strong>Version counter</strong></td><td>Incremented on every update — supports audit trail and optimistic locking</td></tr>
+          <tr><td>☁️ <strong>Azure-native</strong></td><td>Managed Identity auth for Key Vault — no credentials stored anywhere</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── SCHEMA ── -->
+    <h2 id="schema">Schema Definition</h2>
+
+    <div class="code-wrap">
+      <div class="code-header">sql — configurations table <button class="code-copy" onclick="copyCode(this)">Copy</button></div>
+      <pre><span class="kw">CREATE TABLE</span> configurations (
+    id              <span class="kw">UUID</span>         <span class="kw">PRIMARY KEY DEFAULT</span> <span class="fn">gen_random_uuid</span>(),
+    app_name        <span class="kw">VARCHAR</span>(<span class="num">150</span>) <span class="kw">NOT NULL</span>,
+    config_name     <span class="kw">VARCHAR</span>(<span class="num">150</span>) <span class="kw">NOT NULL</span>,   <span class="cm">-- 'database', 'cache', 'feature-flags', 'integrations'</span>
+    environment     <span class="kw">VARCHAR</span>(<span class="num">50</span>)  <span class="kw">NOT NULL</span>,   <span class="cm">-- 'dev', 'test', 'uat', 'prod'</span>
+    config          <span class="kw">JSONB</span>        <span class="kw">NOT NULL DEFAULT</span> <span class="str">'{}'</span>,
+                                               <span class="cm">-- Key Vault URIs stored inline alongside regular values</span>
+
+    version         <span class="kw">INTEGER</span>      <span class="kw">NOT NULL DEFAULT</span> <span class="num">1</span>,
+    is_active       <span class="kw">BOOLEAN</span>      <span class="kw">NOT NULL DEFAULT</span> <span class="kw">TRUE</span>,
+    created_by      <span class="kw">VARCHAR</span>(<span class="num">150</span>) <span class="kw">NOT NULL</span>,
+    updated_by      <span class="kw">VARCHAR</span>(<span class="num">150</span>),
+    created_at      <span class="kw">TIMESTAMPTZ</span>  <span class="kw">NOT NULL DEFAULT</span> <span class="fn">NOW</span>(),
+    updated_at      <span class="kw">TIMESTAMPTZ</span>  <span class="kw">NOT NULL DEFAULT</span> <span class="fn">NOW</span>(),
+
+    <span class="kw">UNIQUE</span> (app_name, config_name, environment)
+);
+
+<span class="cm">-- Indexes</span>
+<span class="kw">CREATE INDEX</span> idx_conf_app_env  <span class="kw">ON</span> configurations (app_name, environment);
+<span class="kw">CREATE INDEX</span> idx_conf_app_name <span class="kw">ON</span> configurations (app_name, config_name, environment);
+<span class="kw">CREATE INDEX</span> idx_conf_gin      <span class="kw">ON</span> configurations <span class="kw">USING GIN</span> (config);</pre>
+    </div>
+
+    <!-- ── CONFIG_NAME ── -->
+    <h2 id="config-name">Using config_name</h2>
+    <p>
+      <code>config_name</code> separates configs into logical groups within the same app and environment.
+      Each row stays small and focused — easier to update, audit, and reason about than one large blob.
+    </p>
+
+    <div class="cn-diagram">
+      <div class="cn-app-label">app_name = "trading-engine" &nbsp;·&nbsp; environment = "prod"</div>
+
+      <div class="cn-card">
+        <div class="cn-card-label">config_name</div>
+        <div class="cn-card-name">database</div>
+        <div class="cn-card-keys">
+          host<br>port<br>name<br>max_connections<br>
+          <span class="secret-key">password 🔑</span>
+        </div>
+      </div>
+      <div class="cn-card">
+        <div class="cn-card-label">config_name</div>
+        <div class="cn-card-name">cache</div>
+        <div class="cn-card-keys">
+          host<br>port<br>ttl_seconds<br>max_retries
+        </div>
+      </div>
+      <div class="cn-card">
+        <div class="cn-card-label">config_name</div>
+        <div class="cn-card-name">feature-flags</div>
+        <div class="cn-card-keys">
+          new_dashboard<br>dark_mode<br>live_price_stream<br>beta_analytics
+        </div>
+      </div>
+      <div class="cn-card">
+        <div class="cn-card-label">config_name</div>
+        <div class="cn-card-name">integrations</div>
+        <div class="cn-card-keys">
+          ig_markets.base_url<br>ig_markets.account_id<br>
+          <span class="secret-key">ig_markets.api_key 🔑</span><br>
+          <span class="secret-key">ig_markets.password 🔑</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="cf-panel note">
+      <div class="cf-panel-icon">💡</div>
+      <div class="cf-panel-body">
+        <strong>Naming convention</strong>
+        Use lowercase kebab-case for <code>config_name</code>: <code>database</code>, <code>cache</code>,
+        <code>feature-flags</code>, <code>integrations</code>, <code>observability</code>.
+        Avoid a catch-all <code>default</code> — named groups are easier to own and rotate independently.
+      </div>
+    </div>
+
+    <!-- ── COLUMNS ── -->
+    <h2 id="columns">Column Reference</h2>
+    <div class="cf-table-wrap">
+      <table>
+        <thead><tr><th>Column</th><th>Type</th><th>Nullable</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>id</code></td><td><code>UUID</code></td><td><span class="td-check">✔</span> auto</td><td>Auto-generated primary key</td></tr>
+          <tr><td><code>app_name</code></td><td><code>VARCHAR(150)</code></td><td><span class="td-warn">✖</span></td><td>Application identifier — e.g. <code>trading-engine</code>, <code>api-gateway</code></td></tr>
+          <tr><td><code>config_name</code></td><td><code>VARCHAR(150)</code></td><td><span class="td-warn">✖</span></td><td>Logical config group — e.g. <code>database</code>, <code>cache</code>, <code>feature-flags</code></td></tr>
+          <tr><td><code>environment</code></td><td><code>VARCHAR(50)</code></td><td><span class="td-warn">✖</span></td><td>Target environment: <code>dev</code>, <code>test</code>, <code>uat</code>, <code>prod</code></td></tr>
+          <tr><td><code>config</code></td><td><code>JSONB</code></td><td><span class="td-warn">✖</span></td><td>Config as nested JSON. Regular values and Key Vault URIs coexist — URIs are resolved at runtime</td></tr>
+          <tr><td><code>version</code></td><td><code>INTEGER</code></td><td><span class="td-warn">✖</span></td><td>Incremented on every update. Supports optimistic locking and audit correlation</td></tr>
+          <tr><td><code>is_active</code></td><td><code>BOOLEAN</code></td><td><span class="td-warn">✖</span></td><td>Soft-delete flag. Inactive rows are ignored at query time</td></tr>
+          <tr><td><code>created_by</code> / <code>updated_by</code></td><td><code>VARCHAR(150)</code></td><td>mixed</td><td>Service account or user identity of creator / last modifier</td></tr>
+          <tr><td><code>created_at</code> / <code>updated_at</code></td><td><code>TIMESTAMPTZ</code></td><td><span class="td-warn">✖</span></td><td>Timestamps with timezone, consistent across all environments</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── SAMPLE DATA ── -->
+    <h2 id="sample">Sample Data</h2>
+    <p>Four rows for <code>trading-engine / prod</code> — one per config group:</p>
+
+    <div class="code-wrap">
+      <div class="code-header">sql — sample inserts <button class="code-copy" onclick="copyCode(this)">Copy</button></div>
+      <pre><span class="cm">-- Database config (password = Key Vault URI)</span>
+<span class="kw">INSERT INTO</span> configurations (app_name, config_name, environment, config, created_by)
+<span class="kw">VALUES</span> (<span class="str">'trading-engine'</span>, <span class="str">'database'</span>, <span class="str">'prod'</span>, <span class="str">'{
+    "host":            "db-prod.internal.example.com",
+    "port":            5432,
+    "name":            "trading",
+    "max_connections": 100,
+    "password":        "https://myvault.vault.azure.net/secrets/trading-db-password"
+}'</span>, <span class="str">'pradeep'</span>);
+
+<span class="cm">-- Cache config (no secrets)</span>
+<span class="kw">INSERT INTO</span> configurations (app_name, config_name, environment, config, created_by)
+<span class="kw">VALUES</span> (<span class="str">'trading-engine'</span>, <span class="str">'cache'</span>, <span class="str">'prod'</span>, <span class="str">'{
+    "host":        "redis-prod.internal.example.com",
+    "port":        6379,
+    "ttl_seconds": 300
+}'</span>, <span class="str">'pradeep'</span>);
+
+<span class="cm">-- Feature flags (no secrets)</span>
+<span class="kw">INSERT INTO</span> configurations (app_name, config_name, environment, config, created_by)
+<span class="kw">VALUES</span> (<span class="str">'trading-engine'</span>, <span class="str">'feature-flags'</span>, <span class="str">'prod'</span>, <span class="str">'{
+    "new_dashboard":     true,
+    "dark_mode":         false,
+    "live_price_stream": true
+}'</span>, <span class="str">'pradeep'</span>);
+
+<span class="cm">-- Integrations (multiple Key Vault URIs)</span>
+<span class="kw">INSERT INTO</span> configurations (app_name, config_name, environment, config, created_by)
+<span class="kw">VALUES</span> (<span class="str">'trading-engine'</span>, <span class="str">'integrations'</span>, <span class="str">'prod'</span>, <span class="str">'{
+    "ig_markets": {
+        "base_url":   "https://api.ig.com/gateway/deal",
+        "account_id": "Z12345",
+        "api_key":    "https://myvault.vault.azure.net/secrets/ig-api-key",
+        "password":   "https://myvault.vault.azure.net/secrets/ig-password"
+    }
+}'</span>, <span class="str">'pradeep'</span>);</pre>
+    </div>
+
+    <!-- ── QUERIES ── -->
+    <h2 id="queries">Common Query Patterns</h2>
+
+    <h3>List all config names for an app</h3>
+    <div class="code-wrap">
+      <div class="code-header">sql <button class="code-copy" onclick="copyCode(this)">Copy</button></div>
+      <pre><span class="kw">SELECT</span> config_name, environment, version, updated_at
+<span class="kw">FROM</span>   configurations
+<span class="kw">WHERE</span>  app_name  = <span class="str">'trading-engine'</span>
+  <span class="kw">AND</span>  is_active = <span class="kw">TRUE</span>
+<span class="kw">ORDER BY</span> environment, config_name;</pre>
+    </div>
+
+    <h3>Fetch a specific config at runtime</h3>
+    <div class="code-wrap">
+      <div class="code-header">sql <button class="code-copy" onclick="copyCode(this)">Copy</button></div>
+      <pre><span class="kw">SELECT</span> config, version
+<span class="kw">FROM</span>   configurations
+<span class="kw">WHERE</span>  app_name    = <span class="str">'trading-engine'</span>
+  <span class="kw">AND</span>  config_name = <span class="str">'database'</span>
+  <span class="kw">AND</span>  environment = <span class="str">'prod'</span>
+  <span class="kw">AND</span>  is_active   = <span class="kw">TRUE</span>;</pre>
+    </div>
+
+    <h3>Update a single key (non-destructive)</h3>
+    <div class="code-wrap">
+      <div class="code-header">sql <button class="code-copy" onclick="copyCode(this)">Copy</button></div>
+      <pre><span class="kw">UPDATE</span> configurations
+<span class="kw">SET</span>    config     = <span class="fn">jsonb_set</span>(config, <span class="str">'{max_connections}'</span>, <span class="str">'200'</span>),
+       updated_by = <span class="str">'pradeep'</span>,
+       updated_at = <span class="fn">NOW</span>(),
+       version    = version + <span class="num">1</span>
+<span class="kw">WHERE</span>  app_name    = <span class="str">'trading-engine'</span>
+  <span class="kw">AND</span>  config_name = <span class="str">'database'</span>
+  <span class="kw">AND</span>  environment = <span class="str">'prod'</span>;</pre>
+    </div>
+
+    <h3>Rotate a secret — point to new Key Vault version</h3>
+    <div class="code-wrap">
+      <div class="code-header">sql <button class="code-copy" onclick="copyCode(this)">Copy</button></div>
+      <pre><span class="kw">UPDATE</span> configurations
+<span class="kw">SET</span>    config     = <span class="fn">jsonb_set</span>(
+                       config,
+                       <span class="str">'{password}'</span>,
+                       <span class="str">'"https://myvault.vault.azure.net/secrets/trading-db-password/newversion123"'</span>
+                   ),
+       updated_by = <span class="str">'pradeep'</span>,
+       updated_at = <span class="fn">NOW</span>(),
+       version    = version + <span class="num">1</span>
+<span class="kw">WHERE</span>  app_name    = <span class="str">'trading-engine'</span>
+  <span class="kw">AND</span>  config_name = <span class="str">'database'</span>
+  <span class="kw">AND</span>  environment = <span class="str">'prod'</span>;</pre>
+    </div>
+
+    <h3>Find all configs containing a Key Vault URI (audit)</h3>
+    <div class="code-wrap">
+      <div class="code-header">sql <button class="code-copy" onclick="copyCode(this)">Copy</button></div>
+      <pre><span class="kw">SELECT</span> app_name, config_name, environment
+<span class="kw">FROM</span>   configurations
+<span class="kw">WHERE</span>  config::text <span class="kw">LIKE</span> <span class="str">'%vault.azure.net%'</span>
+  <span class="kw">AND</span>  is_active = <span class="kw">TRUE</span>;</pre>
+    </div>
+
+    <!-- ── JSONB ── -->
+    <h2 id="jsonb">PostgreSQL JSONB Operator Reference</h2>
+    <div class="cf-table-wrap">
+      <table>
+        <thead><tr><th>Operator</th><th>Example</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>-&gt;</code></td><td><code>config -&gt; 'database'</code></td><td>Returns JSON object for key</td></tr>
+          <tr><td><code>-&gt;&gt;</code></td><td><code>config -&gt;&gt; 'host'</code></td><td>Returns text value for key</td></tr>
+          <tr><td><code>-&gt; -&gt;</code></td><td><code>config -&gt; 'ig_markets' -&gt; 'base_url'</code></td><td>Nested object navigation</td></tr>
+          <tr><td><code>||</code></td><td><code>config || '{...}'::jsonb</code></td><td>Shallow merge — top-level keys only</td></tr>
+          <tr><td><code>jsonb_set()</code></td><td><code>jsonb_set(config, '{a,b}', '"v"')</code></td><td>Deep nested update without overwrite</td></tr>
+          <tr><td><code>@&gt;</code></td><td><code>config @&gt; '{"dark_mode": true}'</code></td><td>Contains check (GIN-indexed)</td></tr>
+          <tr><td><code>::text LIKE</code></td><td><code>config::text LIKE '%vault%'</code></td><td>Full-text scan (use for auditing)</td></tr>
+          <tr><td><code>?</code></td><td><code>config ? 'host'</code></td><td>Key existence check</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── SECRETS ── -->
+    <h2 id="secrets">Secret Handling</h2>
+
+    <div class="cf-panel warn">
+      <div class="cf-panel-icon">⚠️</div>
+      <div class="cf-panel-body">
+        <strong>Never store plaintext secrets in the config column.</strong>
+        Use Azure Key Vault URIs as the value. The application and Ansible automatically detect and
+        resolve any string containing <code>vault.azure.net</code> at startup.
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="col-card good">
+        <h4>✅ Correct — Key Vault URI as value</h4>
+        <pre style="background:#f0faf4; color:#1B5E20; border-radius:3px; padding:12px; font-size:12px; line-height:1.6;">{
+  "host": "db-prod.example.com",
+  "port": 5432,
+  "password": "https://myvault
+    .vault.azure.net
+    /secrets/db-password"
+}</pre>
+      </div>
+      <div class="col-card bad">
+        <h4>❌ Wrong — plaintext secret in config</h4>
+        <pre style="background:#fff5f5; color:#B71C1C; border-radius:3px; padding:12px; font-size:12px; line-height:1.6;">{
+  "host": "db-prod.example.com",
+  "port": 5432,
+  "password": "Sup3rS3cret!@#"
+}</pre>
+      </div>
+    </div>
+
+    <h3>How resolution works</h3>
+    <div class="cf-table-wrap">
+      <table>
+        <thead><tr><th>Step</th><th>FastAPI (startup)</th><th>Ansible / AAP</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Load <code>config</code> JSONB from DB</td><td>Query <code>configurations</code> table</td></tr>
+          <tr><td>2</td><td>Recursively scan all string values for <code>vault.azure.net</code></td><td>Inline Python script flattens URIs</td></tr>
+          <tr><td>3</td><td>Fetch secrets in parallel via Azure SDK (Managed Identity)</td><td><code>az keyvault secret show --id &lt;uri&gt;</code></td></tr>
+          <tr><td>4</td><td>Inject plaintext values back at same JSON paths</td><td>Inject into config dict, template to <code>.env</code> / YAML</td></tr>
+          <tr><td>5</td><td>Store in <code>app.state.config</code> — never logged</td><td>Written to file with <code>mode: 0640</code>, <code>no_log: true</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="cf-panel ok">
+      <div class="cf-panel-icon">🔐</div>
+      <div class="cf-panel-body">
+        <strong>Auth — use Managed Identity (recommended)</strong>
+        Assign the VM, VMSS, or AAP instance a Managed Identity with <code>Key Vault Secrets User</code> role.
+        <code>DefaultAzureCredential</code> picks this up automatically — no <code>AZURE_CLIENT_SECRET</code> ever stored anywhere.
+        For local dev, run <code>az login</code> and it works without any extra config.
+      </div>
+    </div>
+
+    <!-- ── FASTAPI ── -->
+    <h2 id="fastapi">FastAPI Integration</h2>
+    <p>
+      Set <code>APP_NAME</code>, <code>CONFIG_NAME</code>, and <code>ENVIRONMENT</code> as env vars.
+      The app loads, resolves, and caches config before accepting any traffic.
+      Call <code>POST /config/reload</code> after a Key Vault secret rotation — no restart needed.
+    </p>
+
+    <div class="code-wrap">
+      <div class="code-header">python — startup sequence (main.py) <button class="code-copy" onclick="copyCode(this)">Copy</button></div>
+      <pre><span class="cm"># ENV VARS: APP_NAME, CONFIG_NAME, ENVIRONMENT, DATABASE_URL</span>
+
+<span class="op">@</span>asynccontextmanager
+<span class="kw">async def</span> <span class="fn">lifespan</span>(app: FastAPI):
+    app.state.db = <span class="kw">await</span> asyncpg.<span class="fn">create_pool</span>(DATABASE_URL)
+
+    row = <span class="kw">await</span> <span class="fn">_fetch_config</span>(app.state.db, APP_NAME, CONFIG_NAME, ENVIRONMENT)
+    <span class="cm"># SELECT config, version FROM configurations
+    #   WHERE app_name=$1 AND config_name=$2 AND environment=$3 AND is_active=TRUE</span>
+
+    raw_config        = <span class="fn">dict</span>(row[<span class="str">"config"</span>])
+    app.state.config  = <span class="kw">await</span> <span class="fn">resolve_secrets</span>(raw_config)
+    <span class="cm"># resolve_secrets() scans all string values for vault.azure.net
+    # fetches in parallel, injects plaintext back at same JSON paths</span>
+
+    <span class="kw">yield</span>   <span class="cm"># app is ready</span>
+
+<span class="op">@</span>app.<span class="fn">post</span>(<span class="str">"/config/reload"</span>)
+<span class="kw">async def</span> <span class="fn">reload_config</span>():
+    <span class="cm">"""Hot-reload after Key Vault secret rotation."""</span>
+    row               = <span class="kw">await</span> <span class="fn">_fetch_config</span>(...)
+    app.state.config  = <span class="kw">await</span> <span class="fn">resolve_secrets</span>(<span class="fn">dict</span>(row[<span class="str">"config"</span>]))
+    <span class="kw">return</span> {<span class="str">"status"</span>: <span class="str">"reloaded"</span>, <span class="str">"version"</span>: row[<span class="str">"version"</span>]}</pre>
+    </div>
+
+    <!-- ── ANSIBLE ── -->
+    <h2 id="ansible">Ansible / AAP Integration</h2>
+    <p>
+      The playbook <code>fetch_and_apply_config_secrets.yml</code> queries the DB,
+      resolves Key Vault URIs using <code>az keyvault secret show</code>, and templates
+      the resolved config to <code>.env</code> or YAML files on the target host.
+    </p>
+
+    <div class="code-wrap">
+      <div class="code-header">bash — run the playbook <button class="code-copy" onclick="copyCode(this)">Copy</button></div>
+      <pre>ansible-playbook fetch_and_apply_config_secrets.yml \
+  -e <span class="str">"app_name=trading-engine config_name=database environment=prod"</span></pre>
+    </div>
+
+    <div class="cf-table-wrap">
+      <table>
+        <thead><tr><th>AAP Auth Method</th><th>How to configure</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Managed Identity</strong> ✅ recommended</td>
+            <td>Assign the AAP VMSS a Managed Identity with <code>Key Vault Secrets User</code> role — zero config needed in the playbook</td>
+          </tr>
+          <tr>
+            <td><strong>Service Principal</strong></td>
+            <td>Create a Custom Credential Type in AAP that injects <code>AZURE_CLIENT_ID</code>, <code>AZURE_TENANT_ID</code>, <code>AZURE_CLIENT_SECRET</code> as env vars — values stay in AAP vault, never in playbook vars</td>
+          </tr>
+          <tr>
+            <td><strong>Local dev</strong></td>
+            <td>Run <code>az login</code> — <code>DefaultAzureCredential</code> picks it up automatically</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="cf-panel note">
+      <div class="cf-panel-icon">⚠️</div>
+      <div class="cf-panel-body">
+        <strong>AAP activity stream warning</strong>
+        Never include resolved secret values in <code>set_stats</code> — they appear in the AAP activity stream in plaintext.
+        Only pass non-secret values (host names, feature flags, versions) downstream to other job templates.
+      </div>
+    </div>
+
+    <!-- ── DESIGN DECISIONS ── -->
+    <h2 id="decisions">Design Decisions &amp; Trade-offs</h2>
+    <div class="cf-table-wrap">
+      <table>
+        <thead><tr><th>Decision</th><th>Benefit</th><th>Trade-off</th></tr></thead>
+        <tbody>
+          <tr><td><strong>Single table</strong></td><td>Zero joins, simple queries, easy ops</td><td>No enforced per-key schema</td></tr>
+          <tr><td><strong>config_name column</strong></td><td>Separates concerns, independent versioning per group</td><td>App needs to know which config_name to load</td></tr>
+          <tr><td><strong>Vault URIs inside config JSONB</strong></td><td>No separate column needed, one place to look</td><td>App/Ansible must always scan for URIs before use</td></tr>
+          <tr><td><strong>version counter</strong></td><td>Optimistic locking, audit correlation</td><td>App must increment on every update</td></tr>
+          <tr><td><strong>GIN index on config</strong></td><td>Fast JSONB key/value lookups</td><td>Slightly larger index size</td></tr>
+          <tr><td><strong>Managed Identity auth</strong></td><td>No credentials stored anywhere</td><td>Requires Azure-hosted deployment or AAP on Azure</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── FUTURE ── -->
+    <h2 id="future">Future Extensions</h2>
+
+    <div class="cf-panel note">
+      <div class="cf-panel-icon">📌</div>
+      <div class="cf-panel-body">
+        <strong>When to extend</strong>
+        Start with this single-table solution. Add extensions only when a specific need arises.
+      </div>
+    </div>
+
+    <div class="cf-table-wrap">
+      <table>
+        <thead><tr><th>Extension</th><th>When to add</th></tr></thead>
+        <tbody>
+          <tr><td><strong>config_change_history table</strong></td><td>When compliance or full audit trail with ServiceNow ticket refs is required</td></tr>
+          <tr><td><strong>config_snapshots table</strong></td><td>When you need point-in-time rollback tied to ADO pipeline run IDs or git tags</td></tr>
+          <tr><td><strong>JSON Schema validation</strong></td><td>When config contract enforcement across environments becomes necessary</td></tr>
+          <tr><td><strong>Redis cache layer</strong></td><td>When DB read latency on config fetch becomes measurable at scale</td></tr>
+          <tr><td><strong>subscription_id column</strong></td><td>When per-Azure-subscription overrides are needed across your 100+ subscriptions</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="cf-footer">
+      <div><strong>Platform Engineering</strong> · Internal use only · Not for external distribution</div>
+      <div>Last updated <strong>Feb 2026</strong> by <strong>Pradeep</strong> · <a href="#">Raise an issue</a> · <a href="#">Edit this page</a></div>
+    </div>
+
+  </main>
+
+  <!-- RIGHT OUTLINE -->
+  <aside class="cf-outline">
+    <div class="cf-outline-title">Contents</div>
+    <a href="#overview">Overview</a>
+    <a href="#design">Design Principles</a>
+    <a href="#schema">Schema Definition</a>
+    <a href="#config-name">Using config_name</a>
+    <a href="#columns">Column Reference</a>
+    <a href="#sample">Sample Data</a>
+    <a href="#queries">Query Patterns</a>
+    <a href="#jsonb">JSONB Operators</a>
+    <a href="#secrets">Secret Handling</a>
+    <a href="#fastapi">FastAPI</a>
+    <a href="#ansible">Ansible / AAP</a>
+    <a href="#decisions">Design Decisions</a>
+    <a href="#future">Future Extensions</a>
+  </aside>
+
+</div>
+
+<script>
+  function copyCode(btn) {
+    const pre = btn.closest('.code-wrap').querySelector('pre');
+    navigator.clipboard.writeText(pre.innerText).then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 2000);
+    });
+  }
+
+  const headings = document.querySelectorAll('h2[id]');
+  const links    = document.querySelectorAll('.cf-outline a');
+  window.addEventListener('scroll', () => {
+    let current = '';
+    headings.forEach(h => { if (window.scrollY >= h.offsetTop - 100) current = h.id; });
+    links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + current));
+  });
+</script>
+</body>
+</html>
