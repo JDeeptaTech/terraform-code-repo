@@ -1,0 +1,125 @@
+"""
+uvicorn_config.py
+──────────────────
+Gunicorn + Uvicorn configuration for 5-worker, 200 req/s target.
+
+Worker math:
+  5 async Uvicorn workers
+  Each worker handles ~100 concurrent async requests via its event loop
+  5 × 100 = 500 concurrent capacity — comfortable headroom for 200 req/s
+
+Connection pool math (CRITICAL with 5 workers):
+  pool_size    = 4  per worker  (reduced from 10)
+  max_overflow = 4  per worker  (reduced from 10)
+  max per pod  = 5 × (4 + 4) = 40 connections
+  3 pods       = 3 × 40       = 120 total connections
+  Set PostgreSQL max_connections = 150 (+ headroom for migrations, psql)
+
+  Also: sync_bus uses 1 dedicated asyncpg connection per worker
+  5 workers × 3 pods × 1 = 15 extra listener connections
+  Total with listener: 120 + 15 = 135 — still within 150 limit
+
+GitHub API rate limit with 5 workers:
+  5 workers × background poll every 60s = 5 req/min per pod
+  3 pods × 5 = 15 req/min → 900 req/hr
+  PAT limit: 5000 req/hr — safe
+  ETag 304 responses are FREE (don't count toward limit) — most polls hit 304
+"""
+
+import os
+import multiprocessing
+import logging
+
+APP_ENV      = os.getenv("APP_ENV", "development")
+IS_PROD      = APP_ENV == "production"
+LOG_LEVEL    = os.getenv("LOG_LEVEL", "info").lower()
+HOST         = os.getenv("HOST", "0.0.0.0")
+PORT         = int(os.getenv("PORT", "8000"))
+
+# ── Worker count ───────────────────────────────────────────────────────────────
+# For async FastAPI, 5 workers on a 1.5-core pod gives:
+#   - Full use of available CPU across concurrent async tasks
+#   - Each worker handles its own event loop (no GIL contention on I/O)
+#   - If a worker hangs, Gunicorn kills it; others keep serving
+WEB_CONCURRENCY    = int(os.getenv("WEB_CONCURRENCY", "5"))
+WORKER_CONNECTIONS = int(os.getenv("WORKER_CONNECTIONS", "100"))
+
+# ── Gunicorn settings ──────────────────────────────────────────────────────────
+worker_class  = "uvicorn.workers.UvicornWorker"
+workers       = WEB_CONCURRENCY       # 5
+worker_connections = WORKER_CONNECTIONS   # 100 async connections per worker
+bind          = f"{HOST}:{PORT}"
+timeout       = 60        # kill worker if silent for 60s
+keepalive     = int(os.getenv("KEEPALIVE", "5"))
+graceful_timeout = int(os.getenv("GRACEFUL_TIMEOUT", "30"))
+
+# ── Logging ────────────────────────────────────────────────────────────────────
+loglevel     = LOG_LEVEL
+accesslog    = "-"
+errorlog     = "-"
+access_log_format = (
+    '{"time":"%(t)s","method":"%(m)s","path":"%(U)s",'
+    '"status":%(s)s,"duration_ms":%(D)s,"pid":%(p)s}'
+)
+
+proc_name = "placement-engine"
+
+# ── Worker recycling ───────────────────────────────────────────────────────────
+# Recycle workers after N requests to prevent memory drift.
+# With 5 workers handling 200 req/s:
+#   200 req/s ÷ 5 workers = 40 req/s per worker
+#   10,000 requests ÷ 40 req/s = ~4 minutes between recycles
+# This is healthy — frequent enough to avoid memory leaks,
+# infrequent enough that Gunicorn always has spare workers.
+max_requests          = 10_000
+max_requests_jitter   = 1_000   # ± random jitter to stagger recycles
+
+# ── Uvicorn config (used when running directly) ───────────────────────────────
+UVICORN_CONFIG = {
+    "app":               "app.main:app",
+    "host":              HOST,
+    "port":              PORT,
+    "workers":           WEB_CONCURRENCY,
+    "loop":              "uvloop",
+    "http":              "httptools",
+    "log_level":         LOG_LEVEL,
+    "access_log":        True,
+    "use_colors":        not IS_PROD,
+    "proxy_headers":     True,
+    "forwarded_allow_ips": "*",
+    "timeout_keep_alive": keepalive,
+    "timeout_graceful_shutdown": graceful_timeout,
+    "limit_concurrency": WORKER_CONNECTIONS,
+    "limit_max_requests": max_requests,
+    "backlog":           2048,
+}
+
+# ── Gunicorn server hooks ─────────────────────────────────────────────────────
+
+def on_starting(server):
+    server.log.info(
+        f"[startup] placement-engine | "
+        f"workers={WEB_CONCURRENCY} connections={WORKER_CONNECTIONS} port={PORT}"
+    )
+
+
+def post_fork(server, worker):
+    """Called after Gunicorn forks a worker process."""
+    # asyncpg / SQLAlchemy pools are created lazily per worker — nothing to reset
+    server.log.info(f"[worker] forked pid={worker.pid}")
+
+
+def worker_exit(server, worker):
+    server.log.info(f"[worker] pid={worker.pid} exited (requests={worker.nr_conns})")
+
+
+def worker_abort(worker):
+    worker.log.warning(f"[worker] pid={worker.pid} aborted (timeout)")
+
+
+# ── Dev entrypoint ────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    import subprocess, sys
+    print(f"Starting {WEB_CONCURRENCY} workers on {HOST}:{PORT}")
+    subprocess.run(["gunicorn", "-c", __file__, "app.main:app"], check=True)
